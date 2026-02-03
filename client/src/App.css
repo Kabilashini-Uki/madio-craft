@@ -1,0 +1,98 @@
+/* App.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-gray-800 antialiased;
+  }
+  
+  ::selection {
+    @apply bg-primary/30 text-primary-dark;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-full font-semibold transition-all duration-300 hover:shadow-lg hover:scale-[1.02] active:scale-95;
+  }
+  
+  .btn-secondary {
+    @apply border-2 border-primary text-primary hover:bg-primary hover:text-white px-6 py-3 rounded-full font-semibold transition-all duration-300;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-primary/10;
+  }
+  
+  .section-title {
+    @apply text-3xl md:text-4xl font-serif font-bold text-primary-dark mb-4;
+  }
+  
+  .section-subtitle {
+    @apply text-lg text-gray-600 mb-8;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-primary-light;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-primary rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-primary-dark;
+}
+
+/* Animation classes */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* Loading animation */
+.loading-spinner {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #8B4513;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent;
+}
+
+/* Glass morphism */
+.glass {
+  @apply bg-white/10 backdrop-blur-sm border border-white/20;
+}
+
+/* Product card hover effect */
+.product-card-hover {
+  @apply transition-transform duration-500 hover:-translate-y-2;
+}
+
+.input-field {
+  @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all;
+}
