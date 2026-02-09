@@ -19,8 +19,10 @@ const io = socketIO(server, {
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: process.env.FRONTEND_URL || ['http://localhost:3000', 'http://localhost:3001'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -95,4 +97,46 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`API available at http://localhost:${PORT}/api`);
+});
+
+// WebSocket for real-time chat
+io.on('connection', (socket) => {
+  console.log('New client connected:', socket.id);
+
+  // Join a specific room
+  socket.on('join-room', (roomId) => {
+    socket.join(roomId);
+    console.log(`User ${socket.id} joined room: ${roomId}`);
+  });
+
+  // Leave a room
+  socket.on('leave-room', (roomId) => {
+    socket.leave(roomId);
+    console.log(`User ${socket.id} left room: ${roomId}`);
+  });
+
+  // Send message to specific room
+  socket.on('send-message', ({ roomId, message, sender }) => {
+    console.log(`Message in room ${roomId}:`, message);
+    
+    // Broadcast to everyone in the room except sender
+    socket.to(roomId).emit('receive-message', { 
+      roomId, 
+      message, 
+      sender, 
+      timestamp: new Date() 
+    });
+    
+    // Also emit to sender for consistency
+    socket.emit('receive-message', { 
+      roomId, 
+      message, 
+      sender, 
+      timestamp: new Date() 
+    });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
 });
