@@ -57,27 +57,30 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Login function
-  const login = async (email, password) => {
-    try {
-      const res = await axios.post(`${process.env.REACT_APP_API_URL}/auth/login`, {
-        email,
-        password
-      });
-      
-      const { token, user } = res.data;
-      
-      localStorage.setItem('token', token);
-      setToken(token);
-      setUser(user);
-      toast.success('Login successful!');
-      
-      return { success: true };
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed');
-      return { success: false, error: err.response?.data?.message };
-    }
-  };
+  // Update login function:
+const login = async (email, password) => {
+  try {
+    const res = await axios.post(`http://localhost:5000/api/auth/login`, {
+      email,
+      password
+    });
+    
+    const { token, user } = res.data;
+    
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+    setToken(token);
+    setUser(user);
+    toast.success('Login successful!');
+    
+    return { success: true };
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Login failed');
+    return { success: false, error: err.response?.data?.message };
+  }
+};
+
+// Update register function similarly
 
   // Logout function
   const logout = () => {
