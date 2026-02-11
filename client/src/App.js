@@ -1,3 +1,4 @@
+// App.js
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -23,7 +24,6 @@ function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Check if user is logged in
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
@@ -32,8 +32,8 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen flex flex-col">
-        <Navbar user={user} />
+      <div className="min-h-screen flex flex-col bg-background">
+        <Navbar user={user} setUser={setUser} />
         <main className="flex-grow">
           <Routes>
             <Route path="/" element={<Home />} />
@@ -41,7 +41,7 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/products" element={<Products />} />
             <Route path="/products/:id" element={<ProductDetail />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard user={user} setUser={setUser} />} />
             <Route path="/cart" element={<Cart />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/artisans" element={<Artisans />} />
@@ -52,10 +52,27 @@ function App() {
         <Toaster 
           position="top-right"
           toastOptions={{
-            className: '',
+            duration: 4000,
             style: {
-              background: '#5D4037',
-              color: '#FAF3E0',
+              background: 'var(--surface)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow-lg)',
+              padding: '16px 24px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '14px',
+            },
+            success: {
+              iconTheme: {
+                primary: 'var(--success)',
+                secondary: 'white',
+              },
+            },
+            error: {
+              iconTheme: {
+                primary: 'var(--error)',
+                secondary: 'white',
+              },
             },
           }}
         />

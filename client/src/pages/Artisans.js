@@ -1,10 +1,23 @@
+// pages/Artisans.js
 import React, { useState } from 'react';
-import { FaStar, FaMapMarkerAlt, FaTools, FaUser } from 'react-icons/fa';
 import { motion } from 'framer-motion';
+import { 
+  FiMapPin, 
+  FiStar, 
+  FiAward, 
+  FiUsers, 
+  FiSearch,
+  FiFilter,
+  FiChevronRight,
+  FiHeart,
+  FiMail,
+  FiShield
+} from 'react-icons/fi';
 
 const Artisans = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedLocation, setSelectedLocation] = useState('all');
 
   const artisans = [
     {
@@ -16,8 +29,13 @@ const Artisans = () => {
       rating: 4.8,
       reviews: 128,
       experience: '8 years',
-      description: 'Specializing in traditional Indian pottery with modern designs.',
-      image: 'https://via.placeholder.com/200'
+      description: 'Specializing in traditional Indian pottery with modern designs. Her work blends centuries-old techniques with contemporary aesthetics.',
+      image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
+      coverImage: 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=800',
+      products: 45,
+      followers: 2300,
+      verified: true,
+      awards: ['National Craft Award 2023', 'Jaipur Heritage Award']
     },
     {
       id: 2,
@@ -28,8 +46,13 @@ const Artisans = () => {
       rating: 4.9,
       reviews: 215,
       experience: '12 years',
-      description: 'Master craftsman creating intricate wooden carvings and furniture.',
-      image: 'https://via.placeholder.com/200'
+      description: 'Master craftsman creating intricate wooden carvings and furniture. His family has been in this craft for over 50 years.',
+      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
+      coverImage: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=800',
+      products: 78,
+      followers: 5600,
+      verified: true,
+      awards: ['Woodcraft Excellence Award', 'Southern Craft Biennale']
     },
     {
       id: 3,
@@ -40,8 +63,13 @@ const Artisans = () => {
       rating: 4.7,
       reviews: 189,
       experience: '6 years',
-      description: 'Handcrafted silver jewelry with traditional Gujarati motifs.',
-      image: 'https://via.placeholder.com/200'
+      description: 'Handcrafted silver jewelry with traditional Gujarati motifs. Each piece tells a story of heritage and artistry.',
+      image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
+      coverImage: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800',
+      products: 112,
+      followers: 8900,
+      verified: true,
+      awards: ['Emerging Artisan Award 2024']
     },
     {
       id: 4,
@@ -52,8 +80,13 @@ const Artisans = () => {
       rating: 4.6,
       reviews: 142,
       experience: '15 years',
-      description: 'Expert in brass and copper metal crafting.',
-      image: 'https://via.placeholder.com/200'
+      description: 'Expert in brass and copper metal crafting. Known for his intricate Bidri work and contemporary designs.',
+      image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400',
+      coverImage: 'https://images.unsplash.com/photo-1602023039926-7f5d5f1e1b3f?w=800',
+      products: 67,
+      followers: 3400,
+      verified: true,
+      awards: ['Metal Craft Excellence Award']
     },
     {
       id: 5,
@@ -64,8 +97,13 @@ const Artisans = () => {
       rating: 4.9,
       reviews: 256,
       experience: '20 years',
-      description: 'Handloom textiles and Banarasi silk expert.',
-      image: 'https://via.placeholder.com/200'
+      description: 'Handloom textiles and Banarasi silk expert. Reviving ancient weaving techniques with modern applications.',
+      image: 'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=400',
+      coverImage: 'https://images.unsplash.com/photo-1600166898405-da9535204843?w=800',
+      products: 156,
+      followers: 12700,
+      verified: true,
+      awards: ['Padma Shri Nominee', 'Handloom Excellence Award']
     },
     {
       id: 6,
@@ -76,144 +114,307 @@ const Artisans = () => {
       rating: 4.5,
       reviews: 98,
       experience: '10 years',
-      description: 'Creating beautiful glass artifacts and decorations.',
-      image: 'https://via.placeholder.com/200'
+      description: 'Creating beautiful glass artifacts and decorations. Specializes in stained glass and contemporary glass sculptures.',
+      image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400',
+      coverImage: 'https://images.unsplash.com/photo-1571997478779-2adcbbe9ab2f?w=800',
+      products: 34,
+      followers: 1800,
+      verified: false,
+      awards: []
     },
   ];
 
   const categories = ['all', 'pottery', 'woodwork', 'jewelry', 'metalwork', 'textiles', 'glass'];
+  const locations = ['all', 'Rajasthan', 'Tamil Nadu', 'Gujarat', 'Telangana', 'Uttar Pradesh'];
 
   const filteredArtisans = artisans.filter(artisan => {
     const matchesSearch = artisan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          artisan.business.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         artisan.specialty.toLowerCase().includes(searchTerm.toLowerCase());
+                         artisan.specialty.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         artisan.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || artisan.specialty.toLowerCase() === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesLocation = selectedLocation === 'all' || artisan.location.includes(selectedLocation);
+    return matchesSearch && matchesCategory && matchesLocation;
   });
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-primary/90 to-primary-dark/90 text-white py-16 mb-8">
-        <div className="container mx-auto px-4 text-center">
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
+      <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden">
+        <div className="absolute inset-0">
+          <div className="absolute top-0 left-0 w-full h-full bg-[url('https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=1600')] bg-cover bg-center opacity-10"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/50"></div>
+        </div>
+        
+        <div className="container mx-auto px-4 py-24 relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-4xl md:text-5xl font-serif font-bold mb-4"
+            transition={{ duration: 0.8 }}
+            className="max-w-4xl mx-auto text-center"
           >
-            Meet Our Artisans
-          </motion.h1>
-          <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-            Discover the talented creators behind every masterpiece. Each artisan brings unique skills and traditions.
-          </p>
-          
-          {/* Search */}
-          <div className="max-w-2xl mx-auto">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search artisans by name, specialty, or location..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-6 py-4 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-primary-light"
-              />
+            <span className="inline-block px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm mb-6 border border-white/20">
+              👥 Meet the Makers
+            </span>
+            <h1 className="text-5xl md:text-6xl font-serif font-bold mb-6 leading-tight">
+              Master Artisans of 
+              <span className="bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent"> India</span>
+            </h1>
+            <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto leading-relaxed">
+              Connect directly with skilled craftspeople who pour their heart and heritage into every creation.
+            </p>
+            
+            {/* Search Bar */}
+            <div className="max-w-2xl mx-auto relative">
+              <div className="relative">
+                <FiSearch className="absolute left-5 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search artisans by name, craft, or location..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-14 pr-6 py-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-lg"
+                />
+              </div>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Stats Bar */}
+        <div className="border-t border-white/10 bg-black/20 backdrop-blur-sm">
+          <div className="container mx-auto px-4 py-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              {[
+                { value: '500+', label: 'Active Artisans', icon: <FiUsers /> },
+                { value: '25+', label: 'Craft Categories', icon: <FiAward /> },
+                { value: '50k+', label: 'Products Made', icon: <FiHeart /> },
+                { value: '4.8', label: 'Average Rating', icon: <FiStar /> },
+              ].map((stat, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 + index * 0.1 }}
+                  className="text-center"
+                >
+                  <div className="text-2xl md:text-3xl font-bold text-white mb-1">{stat.value}</div>
+                  <div className="text-sm text-gray-400 flex items-center justify-center">
+                    <span className="mr-2">{stat.icon}</span>
+                    {stat.label}
+                  </div>
+                </motion.div>
+              ))}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4">
-        {/* Categories */}
-        <div className="mb-8">
-          <div className="flex flex-wrap gap-2 justify-center">
-            {categories.map(category => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-full capitalize transition-colors ${
-                  selectedCategory === category
-                    ? 'bg-primary text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {category === 'all' ? 'All Artisans' : category}
-              </button>
-            ))}
+      <div className="container mx-auto px-4 py-16">
+        {/* Filters */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white rounded-2xl shadow-lg p-6 mb-12"
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            {/* Categories */}
+            <div className="flex-1">
+              <div className="flex items-center mb-3">
+                <FiFilter className="h-4 w-4 text-gray-500 mr-2" />
+                <span className="text-sm font-medium text-gray-700">Filter by Category</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {categories.map(category => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    className={`px-5 py-2.5 rounded-full text-sm font-medium capitalize transition-all ${
+                      selectedCategory === category
+                        ? 'bg-gradient-to-r from-primary to-primary-dark text-white shadow-lg'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {category === 'all' ? 'All Crafts' : category}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Locations */}
+            <div className="flex-1">
+              <div className="flex items-center mb-3">
+                <FiMapPin className="h-4 w-4 text-gray-500 mr-2" />
+                <span className="text-sm font-medium text-gray-700">Filter by Location</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {locations.map(location => (
+                  <button
+                    key={location}
+                    onClick={() => setSelectedLocation(location)}
+                    className={`px-5 py-2.5 rounded-full text-sm font-medium capitalize transition-all ${
+                      selectedLocation === location
+                        ? 'bg-gradient-to-r from-primary to-primary-dark text-white shadow-lg'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {location === 'all' ? 'All Locations' : location}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+        </motion.div>
+
+        {/* Results Count */}
+        <div className="flex justify-between items-center mb-8">
+          <p className="text-gray-600">
+            <span className="font-semibold text-gray-900 text-lg">{filteredArtisans.length}</span> artisans found
+          </p>
+          <select className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-primary focus:border-transparent">
+            <option>Most Popular</option>
+            <option>Highest Rated</option>
+            <option>Most Products</option>
+            <option>Newest</option>
+          </select>
         </div>
 
         {/* Artisans Grid */}
         {filteredArtisans.length === 0 ? (
-          <div className="text-center py-16">
-            <h3 className="text-2xl font-bold text-gray-700 mb-2">No artisans found</h3>
-            <p className="text-gray-600">Try adjusting your search criteria</p>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-20 bg-white rounded-3xl"
+          >
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">No artisans found</h3>
+            <p className="text-gray-600 mb-6">Try adjusting your filters or search criteria</p>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedCategory('all');
+                setSelectedLocation('all');
+              }}
+              className="px-6 py-3 bg-primary text-white rounded-full hover:bg-primary-dark transition-colors"
+            >
+              Clear All Filters
+            </button>
+          </motion.div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredArtisans.map(artisan => (
+            {filteredArtisans.map((artisan, index) => (
               <motion.div
                 key={artisan.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -5 }}
-                className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300"
+                transition={{ delay: index * 0.1 }}
+                whileHover={{ y: -8 }}
+                className="group bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden"
               >
-                {/* Artisan Image */}
+                {/* Cover Image */}
                 <div className="relative h-48 overflow-hidden">
                   <img
-                    src={artisan.image}
-                    alt={artisan.name}
-                    className="w-full h-full object-cover"
+                    src={artisan.coverImage}
+                    alt={artisan.business}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                   />
-                  <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
-                    <span className="font-semibold text-primary">{artisan.specialty}</span>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
+                  
+                  {/* Profile Image */}
+                  <div className="absolute -bottom-12 left-6">
+                    <div className="relative">
+                      <div className="w-24 h-24 rounded-2xl border-4 border-white overflow-hidden shadow-xl">
+                        <img
+                          src={artisan.image}
+                          alt={artisan.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      {artisan.verified && (
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center border-2 border-white">
+                          <FiShield className="h-3 w-3 text-white" />
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Specialty Badge */}
+                  <span className="absolute top-4 right-4 px-4 py-2 bg-white/90 backdrop-blur-sm rounded-full text-xs font-semibold text-gray-900 shadow-lg">
+                    {artisan.specialty}
+                  </span>
                 </div>
 
-                {/* Artisan Info */}
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
+                {/* Content */}
+                <div className="pt-16 p-6">
+                  <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="text-xl font-bold text-primary-dark">{artisan.name}</h3>
-                      <p className="text-gray-600">{artisan.business}</p>
+                      <h3 className="text-xl font-bold text-gray-900 mb-1 group-hover:text-primary transition-colors">
+                        {artisan.name}
+                      </h3>
+                      <p className="text-primary font-medium">{artisan.business}</p>
                     </div>
-                    <button className="bg-primary/10 hover:bg-primary/20 text-primary px-4 py-2 rounded-full text-sm font-semibold transition-colors">
-                      View Profile
+                    <button className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                      <FiHeart className="h-5 w-5" />
                     </button>
                   </div>
 
-                  <p className="text-gray-700 mb-6 line-clamp-2">{artisan.description}</p>
+                  <p className="text-gray-600 text-sm mb-6 line-clamp-2">
+                    {artisan.description}
+                  </p>
 
-                  {/* Details */}
-                  <div className="space-y-3">
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-2 gap-4 mb-6">
                     <div className="flex items-center text-gray-600">
-                      <FaMapMarkerAlt className="h-4 w-4 mr-2" />
-                      <span>{artisan.location}</span>
+                      <FiMapPin className="h-4 w-4 mr-2 text-gray-400" />
+                      <span className="text-sm">{artisan.location.split(',')[0]}</span>
                     </div>
                     <div className="flex items-center text-gray-600">
-                      <FaTools className="h-4 w-4 mr-2" />
-                      <span>{artisan.experience} experience</span>
+                      <FiAward className="h-4 w-4 mr-2 text-gray-400" />
+                      <span className="text-sm">{artisan.experience}</span>
                     </div>
                     <div className="flex items-center text-gray-600">
-                      <FaUser className="h-4 w-4 mr-2" />
-                      <span>{artisan.reviews} reviews</span>
+                      <FiStar className="h-4 w-4 mr-2 text-yellow-400" />
+                      <span className="text-sm font-semibold">{artisan.rating}</span>
+                      <span className="text-xs text-gray-500 ml-1">({artisan.reviews})</span>
+                    </div>
+                    <div className="flex items-center text-gray-600">
+                      <FiUsers className="h-4 w-4 mr-2 text-gray-400" />
+                      <span className="text-sm">{artisan.followers.toLocaleString()} followers</span>
                     </div>
                   </div>
 
-                  {/* Rating */}
-                  <div className="flex items-center justify-between mt-6 pt-6 border-t">
-                    <div className="flex items-center space-x-2">
-                      <div className="flex text-yellow-400">
-                        {[...Array(5)].map((_, i) => (
-                          <FaStar
-                            key={i}
-                            className={`h-5 w-5 ${i < Math.floor(artisan.rating) ? 'fill-current' : 'text-gray-300'}`}
-                          />
+                  {/* Awards */}
+                  {artisan.awards.length > 0 && (
+                    <div className="mb-6">
+                      <div className="flex flex-wrap gap-2">
+                        {artisan.awards.map((award, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-xs font-medium"
+                          >
+                            🏆 {award}
+                          </span>
                         ))}
                       </div>
-                      <span className="font-bold">{artisan.rating}</span>
                     </div>
-                    <span className="text-sm text-gray-600">View Products →</span>
+                  )}
+
+                  {/* Stats & Actions */}
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                    <div>
+                      <span className="text-sm text-gray-500">Products</span>
+                      <p className="text-lg font-bold text-gray-900">{artisan.products}+</p>
+                    </div>
+                    
+                    <div className="flex space-x-2">
+                      <button className="p-3 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl transition-colors">
+                        <FiMail className="h-5 w-5" />
+                      </button>
+                      <button className="px-5 py-3 bg-gradient-to-r from-primary to-primary-dark text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center space-x-2">
+                        <span>View Shop</span>
+                        <FiChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -221,37 +422,35 @@ const Artisans = () => {
           </div>
         )}
 
-        {/* Stats */}
-        <div className="mt-16 bg-gradient-to-r from-primary-light to-primary-light/50 rounded-2xl p-8 text-center">
-          <h2 className="text-2xl font-bold text-primary-dark mb-6">Our Artisan Community</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div>
-              <div className="text-3xl font-bold text-primary-dark">200+</div>
-              <div className="text-gray-700">Artisans</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-primary-dark">50+</div>
-              <div className="text-gray-700">Cities</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-primary-dark">15+</div>
-              <div className="text-gray-700">Traditional Crafts</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-primary-dark">4.8</div>
-              <div className="text-gray-700">Average Rating</div>
+        {/* Become an Artisan CTA */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="mt-20 bg-gradient-to-br from-gray-900 to-gray-950 rounded-3xl p-12 text-center relative overflow-hidden"
+        >
+          <div className="absolute inset-0">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full filter blur-3xl"></div>
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-secondary/20 rounded-full filter blur-3xl"></div>
+          </div>
+          
+          <div className="relative z-10">
+            <h2 className="text-3xl md:text-4xl font-serif font-bold text-white mb-4">
+              Are You an Artisan?
+            </h2>
+            <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+              Join our community of skilled craftspeople and showcase your work to thousands of customers worldwide.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button className="px-8 py-4 bg-gradient-to-r from-primary to-primary-dark text-white rounded-full font-semibold hover:shadow-2xl transform hover:-translate-y-1 transition-all">
+                Start Selling Today
+              </button>
+              <button className="px-8 py-4 bg-white/10 backdrop-blur-sm text-white rounded-full font-semibold border border-white/30 hover:bg-white/20 transition-all">
+                Learn More
+              </button>
             </div>
           </div>
-        </div>
-
-        {/* CTA */}
-        <div className="mt-12 text-center">
-          <h3 className="text-2xl font-bold text-primary-dark mb-4">Become an Artisan</h3>
-          <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-            Join our community of skilled artisans and showcase your craft to thousands of customers worldwide.
-          </p>
-          <button className="btn-primary">Apply Now</button>
-        </div>
+        </motion.div>
       </div>
     </div>
   );
