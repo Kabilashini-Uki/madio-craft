@@ -1,5 +1,6 @@
 // pages/Artisans.js
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   FiMapPin, 
@@ -13,8 +14,10 @@ import {
   FiMail,
   FiShield
 } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 
 const Artisans = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedLocation, setSelectedLocation] = useState('all');
@@ -22,16 +25,17 @@ const Artisans = () => {
   const artisans = [
     {
       id: 1,
+      _id: '1',
       name: 'Priya Sharma',
       business: 'Clay Creations',
-      specialty: 'Pottery',
+      specialty: 'pottery',
       location: 'Jaipur, Rajasthan',
       rating: 4.8,
       reviews: 128,
       experience: '8 years',
       description: 'Specializing in traditional Indian pottery with modern designs. Her work blends centuries-old techniques with contemporary aesthetics.',
       image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-      coverImage: 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=800',
+      coverImage: 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg',
       products: 45,
       followers: 2300,
       verified: true,
@@ -39,16 +43,17 @@ const Artisans = () => {
     },
     {
       id: 2,
+      _id: '2',
       name: 'Raj Kumar',
       business: 'Wood Wonders',
-      specialty: 'Woodwork',
+      specialty: 'woodwork',
       location: 'Chennai, Tamil Nadu',
       rating: 4.9,
       reviews: 215,
       experience: '12 years',
       description: 'Master craftsman creating intricate wooden carvings and furniture. His family has been in this craft for over 50 years.',
       image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-      coverImage: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=800',
+      coverImage: 'https://images.pexels.com/photos/31193512/pexels-photo-31193512.jpeg',
       products: 78,
       followers: 5600,
       verified: true,
@@ -56,16 +61,17 @@ const Artisans = () => {
     },
     {
       id: 3,
+      _id: '3',
       name: 'Ananya Patel',
       business: 'Silver Symphony',
-      specialty: 'Jewelry',
+      specialty: 'jewelry',
       location: 'Ahmedabad, Gujarat',
       rating: 4.7,
       reviews: 189,
       experience: '6 years',
       description: 'Handcrafted silver jewelry with traditional Gujarati motifs. Each piece tells a story of heritage and artistry.',
       image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
-      coverImage: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800',
+      coverImage: 'https://images.pexels.com/photos/4741622/pexels-photo-4741622.jpeg',
       products: 112,
       followers: 8900,
       verified: true,
@@ -73,16 +79,17 @@ const Artisans = () => {
     },
     {
       id: 4,
+      _id: '4',
       name: 'Suresh Reddy',
       business: 'Metal Masters',
-      specialty: 'Metalwork',
+      specialty: 'metalwork',
       location: 'Hyderabad, Telangana',
       rating: 4.6,
       reviews: 142,
       experience: '15 years',
       description: 'Expert in brass and copper metal crafting. Known for his intricate Bidri work and contemporary designs.',
       image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400',
-      coverImage: 'https://images.unsplash.com/photo-1602023039926-7f5d5f1e1b3f?w=800',
+      coverImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSGEzQe0I3xuy7yG6K4K6sXQVK5N6rycfAi0A&s',
       products: 67,
       followers: 3400,
       verified: true,
@@ -90,16 +97,17 @@ const Artisans = () => {
     },
     {
       id: 5,
+      _id: '5',
       name: 'Meera Singh',
       business: 'Textile Tales',
-      specialty: 'Textiles',
+      specialty: 'textiles',
       location: 'Varanasi, Uttar Pradesh',
       rating: 4.9,
       reviews: 256,
       experience: '20 years',
       description: 'Handloom textiles and Banarasi silk expert. Reviving ancient weaving techniques with modern applications.',
       image: 'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=400',
-      coverImage: 'https://images.unsplash.com/photo-1600166898405-da9535204843?w=800',
+      coverImage: 'https://images.pexels.com/photos/17043766/pexels-photo-17043766.jpeg',
       products: 156,
       followers: 12700,
       verified: true,
@@ -107,22 +115,36 @@ const Artisans = () => {
     },
     {
       id: 6,
+      _id: '6',
       name: 'Arjun Nair',
       business: 'Glass Gallery',
-      specialty: 'Glass Art',
+      specialty: 'glass',
       location: 'Firozabad, Uttar Pradesh',
       rating: 4.5,
       reviews: 98,
       experience: '10 years',
       description: 'Creating beautiful glass artifacts and decorations. Specializes in stained glass and contemporary glass sculptures.',
       image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400',
-      coverImage: 'https://images.unsplash.com/photo-1571997478779-2adcbbe9ab2f?w=800',
+      coverImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTbt4_gHLnnBkLZfLBi2iu9NyP7PFM3--Z2kA&s',
       products: 34,
       followers: 1800,
       verified: false,
       awards: []
     },
   ];
+
+  const handleViewShop = (artisanId) => {
+    navigate(`/artisans/${artisanId}`);
+  };
+
+  const handleContact = (artisanId) => {
+    if (!localStorage.getItem('token')) {
+      toast.error('Please login to contact artisans');
+      navigate('/login');
+      return;
+    }
+    navigate(`/chat/${artisanId}`);
+  };
 
   const categories = ['all', 'pottery', 'woodwork', 'jewelry', 'metalwork', 'textiles', 'glass'];
   const locations = ['all', 'Rajasthan', 'Tamil Nadu', 'Gujarat', 'Telangana', 'Uttar Pradesh'];
@@ -138,15 +160,15 @@ const Artisans = () => {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pt-24">
       {/* Hero Section */}
       <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden">
         <div className="absolute inset-0">
-          <div className="absolute top-0 left-0 w-full h-full bg-[url('https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=1600')] bg-cover bg-center opacity-10"></div>
-          <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/50"></div>
+          <div className="absolute top-0 left-0 w-full h-full bg-[url('https://media.istockphoto.com/id/2157382378/photo/group-of-diverse-people-stacking-hands-in-the-middle.jpg?s=612x612&w=0&k=20&c=-XuqsHcI8nMAXOYAaZzdPsHZeOttDzitvnqX2b4VD-I=')] bg-cover bg-center opacity-10"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-black/10 to-black/5"></div>
         </div>
         
-        <div className="container mx-auto px-4 py-24 relative z-10">
+        <div className="container mx-auto px-4 py-20 relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -158,7 +180,7 @@ const Artisans = () => {
             </span>
             <h1 className="text-5xl md:text-6xl font-serif font-bold mb-6 leading-tight">
               Master Artisans of 
-              <span className="bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent"> India</span>
+              <span className="bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent"> SriLanka</span>
             </h1>
             <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto leading-relaxed">
               Connect directly with skilled craftspeople who pour their heart and heritage into every creation.
@@ -407,10 +429,16 @@ const Artisans = () => {
                     </div>
                     
                     <div className="flex space-x-2">
-                      <button className="p-3 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl transition-colors">
+                      <button 
+                        onClick={() => handleContact(artisan._id)}
+                        className="p-3 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl transition-colors"
+                      >
                         <FiMail className="h-5 w-5" />
                       </button>
-                      <button className="px-5 py-3 bg-gradient-to-r from-primary to-primary-dark text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center space-x-2">
+                      <button
+                        onClick={() => handleViewShop(artisan._id)}
+                        className="px-5 py-3 bg-gradient-to-r from-primary to-primary-dark text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center space-x-2"
+                      >
                         <span>View Shop</span>
                         <FiChevronRight className="h-4 w-4" />
                       </button>
@@ -421,36 +449,6 @@ const Artisans = () => {
             ))}
           </div>
         )}
-
-        {/* Become an Artisan CTA */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="mt-20 bg-gradient-to-br from-gray-900 to-gray-950 rounded-3xl p-12 text-center relative overflow-hidden"
-        >
-          <div className="absolute inset-0">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full filter blur-3xl"></div>
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-secondary/20 rounded-full filter blur-3xl"></div>
-          </div>
-          
-          <div className="relative z-10">
-            <h2 className="text-3xl md:text-4xl font-serif font-bold text-white mb-4">
-              Are You an Artisan?
-            </h2>
-            <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
-              Join our community of skilled craftspeople and showcase your work to thousands of customers worldwide.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button className="px-8 py-4 bg-gradient-to-r from-primary to-primary-dark text-white rounded-full font-semibold hover:shadow-2xl transform hover:-translate-y-1 transition-all">
-                Start Selling Today
-              </button>
-              <button className="px-8 py-4 bg-white/10 backdrop-blur-sm text-white rounded-full font-semibold border border-white/30 hover:bg-white/20 transition-all">
-                Learn More
-              </button>
-            </div>
-          </div>
-        </motion.div>
       </div>
     </div>
   );

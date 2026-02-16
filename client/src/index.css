@@ -291,4 +291,12 @@ h1, h2, h3, h4, h5, h6 {
   .hero {
     padding: 60px 0;
   }
+  main {
+  padding-top: 80px; /* Adjust based on your navbar height */
+}
+
+/* Or if you want to be more specific */
+.flex-grow {
+  padding-top: 80px;
+}
 }

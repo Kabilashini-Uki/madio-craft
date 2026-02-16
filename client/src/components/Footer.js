@@ -150,7 +150,7 @@ const Footer = () => {
                   <div>
                     <p className="text-sm text-gray-400">Phone</p>
                     <a href="tel:+919876543210" className="hover:text-primary-light transition-colors">
-                      +91 98765 43210
+                      +94 98765 43210
                     </a>
                   </div>
                 </div>
@@ -162,7 +162,7 @@ const Footer = () => {
                   <div>
                     <p className="text-sm text-gray-400">Address</p>
                     <p className="hover:text-primary-light transition-colors">
-                      Mumbai, Maharashtra, India
+                      Batticaloa, SriLanka
                     </p>
                   </div>
                 </div>

@@ -63,11 +63,11 @@ const Products = () => {
   ];
 
   const priceRanges = [
-    { id: '0-999', label: 'Under ₹1,000' },
-    { id: '1000-2999', label: '₹1,000 - ₹2,999' },
-    { id: '3000-4999', label: '₹3,000 - ₹4,999' },
-    { id: '5000-9999', label: '₹5,000 - ₹9,999' },
-    { id: '10000+', label: '₹10,000 & Above' },
+    { id: '0-999', label: 'Under Rs1,000' },
+    { id: '1000-2999', label: 'Rs1,000 - Rs2,999' },
+    { id: '3000-4999', label: 'Rs3,000 - Rs4,999' },
+    { id: '5000-9999', label: 'Rs5,000 - Rs9,999' },
+    { id: '10000+', label: 'Rs10,000 & Above' },
   ];
 
   const materials = [
@@ -78,6 +78,7 @@ const Products = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Hero Banner */}
       <div className="relative bg-gradient-to-br from-gray-900 to-gray-950 text-white py-20">
+        
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/20 rounded-full filter blur-3xl"></div>
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-secondary/20 rounded-full filter blur-3xl"></div>

@@ -63,10 +63,10 @@ const Home = () => {
   ];
 
   const categories = [
-    { name: 'Pottery', image: 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=500', count: '234 items' },
-    { name: 'Textiles', image: 'https://images.unsplash.com/photo-1600166898405-da9535204843?w=500', count: '189 items' },
-    { name: 'Jewelry', image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=500', count: '156 items' },
-    { name: 'Woodwork', image: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?w=500', count: '142 items' },
+    { name: 'Pottery', image: 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg', count: '234 items' },
+    { name: 'Textiles', image: 'https://images.pexels.com/photos/17043766/pexels-photo-17043766.jpeg', count: '189 items' },
+    { name: 'Jewelry', image: 'https://images.pexels.com/photos/4741622/pexels-photo-4741622.jpeg', count: '156 items' },
+    { name: 'Woodwork', image: 'https://images.pexels.com/photos/31193512/pexels-photo-31193512.jpeg', count: '142 items' },
   ];
 
   return (
@@ -77,7 +77,7 @@ const Home = () => {
         <div className="absolute inset-0">
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/40 z-10"></div>
           <img 
-            src="https://images.unsplash.com/photo-1605000797499-95a51c5269ae?w=1600" 
+            src="https://media.istockphoto.com/id/639487044/photo/hands-of-a-potter-creating-an-earthen-jar.jpg?s=612x612&w=0&k=20&c=gCVqR1YvUT6qZhazjpNNGzlpgh_sQQJNzXNsh0ZZEh0=" 
             alt="Artisan at work"
             className="w-full h-full object-cover"
           />
@@ -91,12 +91,13 @@ const Home = () => {
             transition={{ duration: 0.8 }}
             className="max-w-3xl"
           >
-            <span className="inline-block px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-white text-sm mb-6 border border-white/20">
+            <br></br>
+            <span className="inline-block px-2 py-2 bg-white/2 backdrop-blur-sm rounded-full text-white text-sm mt-6 border border-white/20">
               ✨ Handcrafted with Love
             </span>
-            <h1 className="text-5xl md:text-7xl font-serif font-bold text-white mb-6 leading-tight">
+            <h1 className="text-4xl md:text-6xl font-serif font-bold text-white mb-6 leading-tight">
               Discover the Art of 
-              <span className="bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent"> Traditional</span>
+              <span className="bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent"> Traditional</span><br></br>
               {' '}Craftsmanship
             </h1>
             <p className="text-xl text-gray-200 mb-8 leading-relaxed">
@@ -342,7 +343,8 @@ const Home = () => {
             >
               <div className="relative rounded-3xl overflow-hidden shadow-2xl">
                 <img 
-                  src="https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800" 
+                  src="https://images.pexels.com/photos/8066090/pexels-photo-8066090.jpeg" 
+                  
                   alt="Artisan at work"
                   className="w-full h-full object-cover"
                 />

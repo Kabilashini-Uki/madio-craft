@@ -87,7 +87,7 @@ const ProductCard = ({ product, viewMode = 'grid', index = 0 }) => {
 
             <div className="flex items-center justify-between pt-4 border-t">
               <div>
-                <span className="text-2xl font-bold text-gray-900">₹{product.price}</span>
+                <span className="text-2xl font-bold text-gray-900">Rs{product.price}</span>
                 {product.stock <= 5 && (
                   <p className="text-xs text-red-500 mt-1">Only {product.stock} left!</p>
                 )}
@@ -222,7 +222,7 @@ const ProductCard = ({ product, viewMode = 'grid', index = 0 }) => {
         {/* Price and Actions */}
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-2xl font-bold text-gray-900">₹{product.price}</span>
+            <span className="text-2xl font-bold text-gray-900">Rs{product.price}</span>
             {product.stock <= 5 && (
               <p className="text-xs text-red-500 font-semibold mt-1">Only {product.stock} left!</p>
             )}

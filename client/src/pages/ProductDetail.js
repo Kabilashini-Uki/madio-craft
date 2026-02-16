@@ -4,6 +4,7 @@ import axios from 'axios';
 import { FaStar, FaHeart, FaShoppingCart, FaShareAlt, FaTruck, FaShieldAlt, FaCheck, FaArrowLeft } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import ProductCustomization from '../components/ProductCustomization';
 
 const ProductDetail = () => {
   const { id } = useParams();
@@ -13,6 +14,7 @@ const ProductDetail = () => {
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState(0);
   const [selectedTab, setSelectedTab] = useState('description');
+  const [showCustomization, setShowCustomization] = useState(false);
 
   useEffect(() => {
     fetchProduct();
@@ -181,7 +183,7 @@ const ProductDetail = () => {
             {/* Price */}
             <div className="bg-gradient-to-r from-primary-light/20 to-primary-light/10 rounded-2xl p-8">
               <div className="flex items-baseline space-x-4 mb-6">
-                <span className="text-5xl font-bold text-primary-dark">₹{product.price}</span>
+                <span className="text-5xl font-bold text-primary-dark">Rs{product.price}</span>
                 {product.stock <= 10 && (
                   <span className="text-red-600 font-semibold bg-red-50 px-3 py-1 rounded-full">
                     Only {product.stock} left!
@@ -229,6 +231,22 @@ const ProductDetail = () => {
                   ✨ Customize This Product
                 </button>
               )}
+
+              {product.isCustomizable && (
+  <button
+    onClick={() => setShowCustomization(true)}
+    className="w-full mt-4 bg-white border-2 border-primary text-primary hover:bg-primary hover:text-white py-3 rounded-full font-semibold transition-colors flex items-center justify-center space-x-2"
+  >
+    <FiMessageCircle className="h-5 w-5" />
+    <span>✨ Customize with Artisan</span>
+  </button>
+)}
+{/* Add customization modal */}
+<ProductCustomization
+  product={product}
+  isOpen={showCustomization}
+  onClose={() => setShowCustomization(false)}
+/>
             </div>
 
             {/* Features */}
@@ -240,7 +258,7 @@ const ProductDetail = () => {
                   </div>
                   <div>
                     <p className="font-semibold">Free Shipping</p>
-                    <p className="text-sm text-gray-600">On orders over ₹999</p>
+                    <p className="text-sm text-gray-600">On orders over Rs999</p>
                   </div>
                 </div>
               </div>

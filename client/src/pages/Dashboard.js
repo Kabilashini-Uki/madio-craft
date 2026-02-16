@@ -37,7 +37,7 @@ const Dashboard = ({ user }) => {
     },
     { 
       label: 'Revenue', 
-      value: '₹45,699', 
+      value: 'Rs45,699', 
       change: '+23%', 
       icon: <FiDollarSign />, 
       color: 'from-green-500 to-green-600',
@@ -180,10 +180,10 @@ const Dashboard = ({ user }) => {
                       <div>
                         <p className="font-semibold text-gray-900">{order.id}</p>
                         <p className="text-sm text-gray-500">{order.date} • {order.items} items</p>
-                      </div>
+                      </div> 
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-gray-900">₹{order.total}</p>
+                      <p className="font-bold text-gray-900">Rs{order.total}</p>
                       <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium
                         ${order.status === 'Delivered' ? 'bg-green-100 text-green-700' : ''}
                         ${order.status === 'Shipped' ? 'bg-blue-100 text-blue-700' : ''}
@@ -226,7 +226,7 @@ const Dashboard = ({ user }) => {
                     <div className="flex-1">
                       <p className="font-semibold text-gray-900 text-sm mb-1">{item.name}</p>
                       <p className="text-xs text-gray-500 mb-2">{item.artisan}</p>
-                      <p className="font-bold text-primary">₹{item.price}</p>
+                      <p className="font-bold text-primary">Rs{item.price}</p>
                     </div>
                   </div>
                 ))}
@@ -267,7 +267,7 @@ const Dashboard = ({ user }) => {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-300">Total spent</span>
-                  <span className="font-semibold">₹45,699</span>
+                  <span className="font-semibold">Rs45,699</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-300">Reviews</span>

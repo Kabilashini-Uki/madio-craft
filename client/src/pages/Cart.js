@@ -185,7 +185,7 @@ const Cart = () => {
                           )}
                           {item.originalPrice && (
                             <span className="px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full">
-                              Save ₹{item.originalPrice - item.price}
+                              Save Rs{item.originalPrice - item.price}
                             </span>
                           )}
                         </div>
@@ -215,11 +215,11 @@ const Cart = () => {
 
                           <div className="text-right">
                             <div className="text-xl font-bold text-gray-900">
-                              ₹{item.price * item.quantity}
+                              Rs{item.price * item.quantity}
                             </div>
                             {item.originalPrice && (
                               <div className="text-sm text-gray-400 line-through">
-                                ₹{item.originalPrice * item.quantity}
+                                Rs{item.originalPrice * item.quantity}
                               </div>
                             )}
                           </div>
@@ -281,12 +281,12 @@ const Cart = () => {
                 <div className="space-y-3 mb-6">
                   <div className="flex justify-between text-gray-600">
                     <span>Subtotal</span>
-                    <span>₹{subtotal.toLocaleString()}</span>
+                    <span>Rs{subtotal.toLocaleString()}</span>
                   </div>
                   {savings > 0 && (
                     <div className="flex justify-between text-green-600">
                       <span>Savings</span>
-                      <span>-₹{savings.toLocaleString()}</span>
+                      <span>-Rs{savings.toLocaleString()}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-gray-600">
@@ -295,18 +295,18 @@ const Cart = () => {
                   </div>
                   <div className="flex justify-between text-gray-600">
                     <span>Tax (18% GST)</span>
-                    <span>₹{Math.round(tax).toLocaleString()}</span>
+                    <span>Rs{Math.round(tax).toLocaleString()}</span>
                   </div>
                   {couponApplied && (
                     <div className="flex justify-between text-green-600">
                       <span>Discount (WELCOME10)</span>
-                      <span>-₹{Math.round(subtotal * 0.1).toLocaleString()}</span>
+                      <span>-Rs{Math.round(subtotal * 0.1).toLocaleString()}</span>
                     </div>
                   )}
                   <div className="border-t pt-3">
                     <div className="flex justify-between text-lg font-bold text-gray-900">
                       <span>Total</span>
-                      <span>₹{Math.round(total - (couponApplied ? subtotal * 0.1 : 0)).toLocaleString()}</span>
+                      <span>Rs{Math.round(total - (couponApplied ? subtotal * 0.1 : 0)).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -328,7 +328,7 @@ const Cart = () => {
                     </div>
                     <div className="flex items-center">
                       <FiTruck className="h-4 w-4 mr-1" />
-                      <span>Free shipping over ₹999</span>
+                      <span>Free shipping over Rs999</span>
                     </div>
                     <div className="flex items-center">
                       <FiRefreshCw className="h-4 w-4 mr-1" />
