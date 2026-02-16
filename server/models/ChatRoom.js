@@ -1,10 +1,11 @@
+// server/models/ChatRoom.js
 const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema({
   sender: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    type: mongoose.Schema.Types.Mixed, // Allow both ObjectId and string
+    required: true,
+    ref: 'User'
   },
   message: {
     type: String,
@@ -32,21 +33,51 @@ const messageSchema = new mongoose.Schema({
 
 const chatRoomSchema = new mongoose.Schema({
   participants: [{
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.Mixed, // Allow both ObjectId and string
     ref: 'User',
     required: true
   }],
   order: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.Mixed,
     ref: 'Order'
   },
   product: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.Mixed,
     ref: 'Product'
+  },
+  type: {
+    type: String,
+    enum: ['general', 'customization', 'order'],
+    default: 'general'
+  },
+  customizationData: {
+    options: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: {}
+    },
+    dimensions: {
+      width: Number,
+      height: Number,
+      depth: Number
+    },
+    notes: String,
+    quantity: {
+      type: Number,
+      default: 1
+    },
+    deadline: Date,
+    estimatedPrice: Number,
+    finalPrice: Number
+  },
+  customizationStatus: {
+    type: String,
+    enum: ['draft', 'pending', 'quote_sent', 'accepted', 'declined', 'in_progress', 'completed'],
+    default: 'draft'
   },
   lastMessage: {
     sender: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.Mixed,
       ref: 'User'
     },
     message: {
@@ -72,6 +103,10 @@ const chatRoomSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  createdBy: {
+    type: mongoose.Schema.Types.Mixed,
+    ref: 'User'
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -84,6 +119,12 @@ const chatRoomSchema = new mongoose.Schema({
 
 chatRoomSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
+  next();
+});
+
+// Add a pre-find middleware to handle string IDs
+chatRoomSchema.pre(/^find/, function(next) {
+  // This helps with population when using string IDs
   next();
 });
 

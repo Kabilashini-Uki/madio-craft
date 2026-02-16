@@ -7,6 +7,11 @@ const seedDatabase = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
     
+    // Clear existing data
+    console.log('Clearing existing data...');
+    await User.deleteMany({ email: 'artisan@test.com' });
+    await Product.deleteMany({});
+    
     // Create test artisan
     const artisan = await User.create({
       name: 'Test Artisan',
@@ -23,7 +28,7 @@ const seedDatabase = async () => {
     // Create test product
     await Product.create({
       artisan: artisan._id,
-      name: 'Handmade Ceramic Mug',
+      name: 'Handmade Ceramic Mug muggggg',
       description: 'Beautiful handmade ceramic mug',
       price: 1200,
       category: 'pottery',

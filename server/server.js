@@ -1,142 +1,118 @@
+// server/server.js
 const express = require('express');
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
 const cors = require('cors');
-const http = require('http');
-const socketIO = require('socket.io');
+const dotenv = require('dotenv');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app);
-const io = socketIO(server, {
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
     credentials: true
   }
 });
 
+// Make io accessible to routes
+app.set('io', io);
+
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Database connection
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB Atlas connected successfully'))
-.catch(err => {
-  console.error('MongoDB connection error:', err.message);
-  process.exit(1);
+const connectDB = async () => {
+  try {
+    if (!process.env.MONGO_URI) {
+      console.error('❌ MONGO_URI is not defined in environment variables');
+      process.exit(1);
+    }
+
+    console.log('🔄 Connecting to MongoDB Atlas...');
+    
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+
+    console.log(`✅ MongoDB Atlas connected successfully!`);
+    console.log(`📡 Host: ${conn.connection.host}`);
+    console.log(`📊 Database: ${conn.connection.name}`);
+    
+  } catch (error) {
+    console.error('❌ MongoDB connection error:', error.message);
+  }
+};
+
+connectDB();
+
+// Routes
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/products', require('./routes/productRoutes'));
+app.use('/api/orders', require('./routes/orderRoutes'));
+app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/chat', require('./routes/secureChatRoutes')); // Add this line
+
+// Health check route
+app.get('/api/health', (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  const dbStatus = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+  
+  res.json({ 
+    status: 'OK', 
+    message: 'Server is running',
+    database: {
+      status: dbStatus[dbState] || 'unknown',
+      name: mongoose.connection.name || 'not connected'
+    },
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Test route
-app.get('/', (req, res) => {
-  res.json({ message: 'MadioCraft API is running' });
-});
-
-// WebSocket for real-time chat
+// Socket.io for chat
 io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
-
+  console.log('🔌 New client connected:', socket.id);
+  
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
-    console.log(`User joined room: ${roomId}`);
+    console.log(`👤 User joined room: ${roomId}`);
   });
-
-  socket.on('send-message', ({ roomId, message, sender }) => {
-    io.to(roomId).emit('receive-message', { message, sender, timestamp: new Date() });
+  
+  socket.on('send-message', async (data) => {
+    io.to(data.roomId).emit('receive-message', {
+      ...data,
+      timestamp: new Date()
+    });
   });
-
+  
+  socket.on('typing', ({ roomId, isTyping }) => {
+    socket.to(roomId).emit('user-typing', { isTyping });
+  });
+  
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-  });
-});
-
-// Import routes (make sure these files exist)
-try {
-  app.use('/api/auth', require('./routes/authRoutes'));
-  app.use('/api/users', require('./routes/userRoutes'));
-  app.use('/api/products', require('./routes/productRoutes'));
-  app.use('/api/orders', require('./routes/orderRoutes'));
-  app.use('/api/chat', require('./routes/chatRoutes'));
-  app.use('/api/payment', require('./routes/paymentRoutes'));
-  app.use('/api/admin', require('./routes/adminRoutes'));
-  console.log('All routes loaded successfully');
-} catch (error) {
-  console.error('Error loading routes:', error.message);
-}
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ 
-    success: false,
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
+    console.log('❌ Client disconnected:', socket.id);
   });
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`API available at http://localhost:${PORT}/api`);
-});
-
-// WebSocket for real-time chat
-io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
-
-  // Join a specific room
-  socket.on('join-room', (roomId) => {
-    socket.join(roomId);
-    console.log(`User ${socket.id} joined room: ${roomId}`);
-  });
-
-  // Leave a room
-  socket.on('leave-room', (roomId) => {
-    socket.leave(roomId);
-    console.log(`User ${socket.id} left room: ${roomId}`);
-  });
-
-  // Send message to specific room
-  socket.on('send-message', ({ roomId, message, sender }) => {
-    console.log(`Message in room ${roomId}:`, message);
-    
-    // Broadcast to everyone in the room except sender
-    socket.to(roomId).emit('receive-message', { 
-      roomId, 
-      message, 
-      sender, 
-      timestamp: new Date() 
-    });
-    
-    // Also emit to sender for consistency
-    socket.emit('receive-message', { 
-      roomId, 
-      message, 
-      sender, 
-      timestamp: new Date() 
-    });
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-  });
+httpServer.listen(PORT, () => {
+  console.log(`\n🚀 Server running on port ${PORT}`);
+  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Client URL: ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
+  console.log(`📡 Socket.io server ready\n`);
 });
