@@ -1,4 +1,4 @@
-// server/server.js
+// server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -35,20 +35,12 @@ const connectDB = async () => {
       console.error('❌ MONGO_URI is not defined in environment variables');
       process.exit(1);
     }
-
     console.log('🔄 Connecting to MongoDB Atlas...');
-    
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
-    console.log(`✅ MongoDB Atlas connected successfully!`);
-    console.log(`📡 Host: ${conn.connection.host}`);
-    console.log(`📊 Database: ${conn.connection.name}`);
-    
+    const conn = await mongoose.connect(process.env.MONGO_URI);
+    console.log(`✅ MongoDB Atlas connected: ${conn.connection.host}`);
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
+    process.exit(1);
   }
 };
 
@@ -58,30 +50,34 @@ connectDB();
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
+app.use('/api/cart', require('./routes/cartRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/chat', require('./routes/secureChatRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
-app.use('/api/chat', require('./routes/secureChatRoutes')); // Add this line
 
-// Health check route
+// Health check
 app.get('/api/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
-  const dbStatus = {
-    0: 'disconnected',
-    1: 'connected',
-    2: 'connecting',
-    3: 'disconnecting'
-  };
-  
+  const dbStatus = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
   res.json({ 
     status: 'OK', 
     message: 'Server is running',
-    database: {
-      status: dbStatus[dbState] || 'unknown',
-      name: mongoose.connection.name || 'not connected'
-    },
+    database: { status: dbStatus[dbState] || 'unknown', name: mongoose.connection.name || 'not connected' },
     timestamp: new Date().toISOString()
   });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: `Route ${req.originalUrl} not found` });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Server Error:', err.stack);
+  res.status(500).json({ message: 'Something went wrong', error: process.env.NODE_ENV === 'development' ? err.message : undefined });
 });
 
 // Socket.io for chat

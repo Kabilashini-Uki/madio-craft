@@ -13,7 +13,7 @@ const generateToken = (id) => {
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, artisanProfile } = req.body;
 
     // Check if user exists
     const userExists = await User.findOne({ email });
@@ -22,12 +22,19 @@ exports.register = async (req, res) => {
     }
 
     // Create user
-    const user = await User.create({
+    const userData = {
       name,
       email,
       password,
       role: role || 'buyer'
-    });
+    };
+
+    // Add artisan profile if registering as artisan
+    if (role === 'artisan' && artisanProfile) {
+      userData.artisanProfile = artisanProfile;
+    }
+
+    const user = await User.create(userData);
 
     // Generate token
     const token = generateToken(user._id);
@@ -40,11 +47,21 @@ exports.register = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        avatar: user.avatar
+        avatar: user.avatar,
+        ...(user.role === 'artisan' && { artisanProfile: user.artisanProfile })
       }
     });
   } catch (error) {
     console.error(error);
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
+    // Handle duplicate key error
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Email already in use' });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -85,6 +102,11 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 };

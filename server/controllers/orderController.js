@@ -1,24 +1,25 @@
+// controllers/orderController.js
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const { ChatRoom } = require('../models/ChatRoom');
 const crypto = require('crypto');
+const Razorpay = require('razorpay');
 
-// Initialize Razorpay only if credentials exist
 let razorpayInstance = null;
 
+// Initialize Razorpay
 try {
   if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-    const Razorpay = require('razorpay');
     razorpayInstance = new Razorpay({
       key_id: process.env.RAZORPAY_KEY_ID,
       key_secret: process.env.RAZORPAY_KEY_SECRET
     });
-    console.log('✓ Razorpay initialized successfully');
+    console.log('✅ Razorpay initialized successfully');
   } else {
-    console.log('⚠ Razorpay credentials not found. Payment functionality disabled.');
+    console.log('⚠️  Razorpay credentials not found. Payment in test mode.');
   }
 } catch (error) {
-  console.error('Failed to initialize Razorpay:', error.message);
+  console.error('❌ Failed to initialize Razorpay:', error.message);
 }
 
 // @desc    Create new order
@@ -26,7 +27,7 @@ try {
 // @access  Private
 exports.createOrder = async (req, res) => {
   try {
-    const { items, shippingAddress, notes } = req.body;
+    const { items, shippingAddress, notes, paymentMethod = 'razorpay' } = req.body;
     const buyer = req.user.id;
 
     // Calculate total amount and validate items
@@ -61,18 +62,19 @@ exports.createOrder = async (req, res) => {
       totalAmount += itemTotal;
     }
 
-    // Mock Razorpay order if not configured
+    // Create Razorpay order
     let razorpayOrder = null;
     if (razorpayInstance) {
       razorpayOrder = await razorpayInstance.orders.create({
-        amount: totalAmount * 100, // Convert to paise
+        amount: Math.round(totalAmount * 100), // Convert to paise
         currency: 'INR',
-        receipt: `receipt_${Date.now()}`
+        receipt: `receipt_${Date.now()}`,
+        payment_capture: 1
       });
     } else {
-      // Create mock order for development
+      // Mock order for development
       razorpayOrder = {
-        id: `mock_order_${Date.now()}`,
+        id: `order_${Date.now()}`,
         amount: totalAmount * 100,
         currency: 'INR',
         receipt: `receipt_${Date.now()}`,
@@ -82,9 +84,16 @@ exports.createOrder = async (req, res) => {
 
     // Create order in database
     const order = await Order.create({
+      orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       buyer,
       artisan: artisanId,
-      items,
+      items: items.map(item => ({
+        product: item.product,
+        quantity: item.quantity,
+        customization: item.customization || {},
+        price: item.price || 0,
+        totalPrice: item.price * item.quantity
+      })),
       shippingAddress,
       notes,
       totalAmount,
@@ -94,26 +103,31 @@ exports.createOrder = async (req, res) => {
         amount: totalAmount,
         currency: 'INR',
         status: 'pending'
-      }
+      },
+      orderStatus: 'pending'
     });
 
     // Create chat room for this order
-    const chatRoom = await ChatRoom.create({
-      participants: [buyer, artisanId],
-      order: order._id,
-      product: items[0]?.product
-    });
-
-    // Update order with chat room
-    order.chatRoom = chatRoom._id;
-    await order.save();
+    try {
+      const chatRoom = await ChatRoom.create({
+        participants: [buyer, artisanId],
+        order: order._id,
+        product: items[0]?.product,
+        type: 'order'
+      });
+      order.chatRoom = chatRoom._id;
+      await order.save();
+    } catch (chatError) {
+      console.error('Chat room creation error:', chatError);
+      // Don't fail the order if chat room creation fails
+    }
 
     res.status(201).json({
       success: true,
       order,
       razorpayOrder,
-      chatRoom: chatRoom._id,
-      note: razorpayInstance ? null : 'Payment is in test mode (Razorpay not configured)'
+      key: process.env.RAZORPAY_KEY_ID,
+      isTestMode: !razorpayInstance
     });
   } catch (error) {
     console.error('Create order error:', error);
@@ -128,30 +142,35 @@ exports.verifyPayment = async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
+    if (!razorpay_order_id) {
+      return res.status(400).json({ message: 'Order ID is required' });
+    }
+
+    // Find the order
+    const order = await Order.findOne({ 
+      'paymentInfo.razorpayOrderId': razorpay_order_id 
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
     // If Razorpay not configured, simulate successful payment
     if (!razorpayInstance) {
-      const order = await Order.findOne({ 
-        'paymentInfo.razorpayOrderId': razorpay_order_id 
+      order.paymentInfo.razorpayPaymentId = razorpay_payment_id || `mock_payment_${Date.now()}`;
+      order.paymentInfo.razorpaySignature = razorpay_signature || 'mock_signature';
+      order.paymentInfo.status = 'completed';
+      order.paymentInfo.paidAt = new Date();
+      order.orderStatus = 'confirmed';
+
+      await order.save();
+
+      return res.json({
+        success: true,
+        message: 'Payment verified successfully (test mode)',
+        order,
+        isTestMode: true
       });
-
-      if (order) {
-        order.paymentInfo.razorpayPaymentId = razorpay_payment_id || `mock_payment_${Date.now()}`;
-        order.paymentInfo.razorpaySignature = razorpay_signature || 'mock_signature';
-        order.paymentInfo.status = 'completed';
-        order.paymentInfo.paidAt = new Date();
-        order.orderStatus = 'confirmed';
-
-        await order.save();
-
-        return res.json({
-          success: true,
-          message: 'Payment verified successfully (test mode)',
-          order,
-          isTestMode: true
-        });
-      } else {
-        return res.status(404).json({ message: 'Order not found' });
-      }
     }
 
     // Actual Razorpay verification
@@ -164,28 +183,19 @@ exports.verifyPayment = async (req, res) => {
     const isAuthentic = expectedSignature === razorpay_signature;
 
     if (isAuthentic) {
-      // Update order status
-      const order = await Order.findOne({ 
-        'paymentInfo.razorpayOrderId': razorpay_order_id 
+      order.paymentInfo.razorpayPaymentId = razorpay_payment_id;
+      order.paymentInfo.razorpaySignature = razorpay_signature;
+      order.paymentInfo.status = 'completed';
+      order.paymentInfo.paidAt = new Date();
+      order.orderStatus = 'confirmed';
+
+      await order.save();
+
+      res.json({
+        success: true,
+        message: 'Payment verified successfully',
+        order
       });
-
-      if (order) {
-        order.paymentInfo.razorpayPaymentId = razorpay_payment_id;
-        order.paymentInfo.razorpaySignature = razorpay_signature;
-        order.paymentInfo.status = 'completed';
-        order.paymentInfo.paidAt = new Date();
-        order.orderStatus = 'confirmed';
-
-        await order.save();
-
-        res.json({
-          success: true,
-          message: 'Payment verified successfully',
-          order
-        });
-      } else {
-        res.status(404).json({ message: 'Order not found' });
-      }
     } else {
       res.status(400).json({ message: 'Payment verification failed' });
     }
@@ -195,39 +205,31 @@ exports.verifyPayment = async (req, res) => {
   }
 };
 
-// @desc    Get user orders
-// @route   GET /api/orders/my-orders
+// @desc    Get single order
+// @route   GET /api/orders/:id
 // @access  Private
-exports.getMyOrders = async (req, res) => {
+exports.getOrder = async (req, res) => {
   try {
-    const orders = await Order.find({ buyer: req.user.id })
-      .populate('artisan', 'name avatar')
-      .populate('items.product', 'name images')
-      .sort('-createdAt');
+    const order = await Order.findById(req.params.id)
+      .populate('buyer', 'name email avatar')
+      .populate('artisan', 'name email avatar artisanProfile.businessName')
+      .populate('items.product', 'name images price')
+      .populate('chatRoom');
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check if user is authorized
+    if (order.buyer._id.toString() !== req.user.id && 
+        order.artisan._id.toString() !== req.user.id && 
+        req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
 
     res.json({
       success: true,
-      orders
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// @desc    Get artisan orders
-// @route   GET /api/orders/artisan-orders
-// @access  Private/Artisan
-exports.getArtisanOrders = async (req, res) => {
-  try {
-    const orders = await Order.find({ artisan: req.user.id })
-      .populate('buyer', 'name avatar')
-      .populate('items.product', 'name images')
-      .sort('-createdAt');
-
-    res.json({
-      success: true,
-      orders
+      order
     });
   } catch (error) {
     console.error(error);
@@ -247,7 +249,7 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    // Check if user is the artisan
+    // Check if user is the artisan or admin
     if (order.artisan.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized' });
     }
@@ -255,13 +257,56 @@ exports.updateOrderStatus = async (req, res) => {
     order.orderStatus = status;
     if (trackingNumber) order.trackingNumber = trackingNumber;
     if (trackingUrl) order.trackingUrl = trackingUrl;
-    if (status === 'shipped') order.estimatedDelivery = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    
+    if (status === 'shipped') {
+      order.estimatedDelivery = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    }
 
     await order.save();
 
     res.json({
       success: true,
       order
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get user orders
+// @route   GET /api/orders/my-orders
+// @access  Private
+exports.getMyOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ buyer: req.user.id })
+      .populate('artisan', 'name avatar artisanProfile.businessName')
+      .populate('items.product', 'name images price')
+      .sort('-createdAt');
+
+    res.json({
+      success: true,
+      orders
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get artisan orders
+// @route   GET /api/orders/artisan-orders
+// @access  Private/Artisan
+exports.getArtisanOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ artisan: req.user.id })
+      .populate('buyer', 'name avatar')
+      .populate('items.product', 'name images price')
+      .sort('-createdAt');
+
+    res.json({
+      success: true,
+      orders
     });
   } catch (error) {
     console.error(error);
@@ -276,6 +321,31 @@ exports.test = (req, res) => {
   res.json({
     success: true,
     message: 'Orders route is working',
-    razorpayConfigured: !!razorpayInstance
+    razorpayConfigured: !!razorpayInstance,
+    timestamp: new Date().toISOString()
   });
+};
+// @desc    Cancel order
+// @route   PUT /api/orders/:id/cancel  (also accessible via status route with status=cancelled)
+exports.cancelOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    
+    if (order.buyer.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    
+    if (['shipped', 'delivered'].includes(order.orderStatus)) {
+      return res.status(400).json({ message: 'Cannot cancel shipped or delivered orders' });
+    }
+    
+    order.orderStatus = 'cancelled';
+    if (req.body.reason) order.notes = req.body.reason;
+    await order.save();
+    
+    res.json({ success: true, order });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
 };
