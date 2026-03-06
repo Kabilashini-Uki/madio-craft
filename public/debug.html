@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MadioCraft - Authentication Debug</title>
+  <style>
+    body { font-family: monospace; margin: 20px; background: #f5f5f5; }
+    .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h1 { color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
+    .test { margin: 15px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+    .success { background: #d4edda; border-color: #28a745; color: #155724; }
+    .error { background: #f8d7da; border-color: #dc3545; color: #721c24; }
+    .info { background: #d1ecf1; border-color: #0c5460; color: #0c5460; }
+    .code { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    input, button { padding: 8px 12px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
+    button { background: #007bff; color: white; cursor: pointer; border: none; }
+    button:hover { background: #0056b3; }
+    .output { background: #f4f4f4; padding: 10px; margin-top: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 MadioCraft Authentication Debug Tool</h1>
+    
+    <div class="test info">
+      <strong>ℹ️ Browser Information</strong>
+      <div>
+        <div>User Agent: <span id="ua"></span></div>
+        <div>Local Storage Available: <span id="ls"></span></div>
+        <div>Session Storage Available: <span id="ss"></span></div>
+      </div>
+    </div>
+
+    <div class="test">
+      <strong>🧪 TEST 1: Check API Configuration</strong>
+      <button onclick="testAPIConfig()">Run Test</button>
+      <div id="test1-output" class="output"></div>
+    </div>
+
+    <div class="test">
+      <strong>🌐 TEST 2: Test Backend Connection</strong>
+      <button onclick="testBackend()">Run Test</button>
+      <div id="test2-output" class="output"></div>
+    </div>
+
+    <div class="test">
+      <strong>📝 TEST 3: Test Registration</strong>
+      <div>
+        <input type="text" id="reg-name" placeholder="Name" value="Test User">
+        <input type="email" id="reg-email" placeholder="Email" value="">
+        <input type="password" id="reg-password" placeholder="Password" value="password123">
+        <button onclick="testRegistration()">Register</button>
+      </div>
+      <div id="test3-output" class="output"></div>
+    </div>
+
+    <div class="test">
+      <strong>🔐 TEST 4: Test Login</strong>
+      <div>
+        <input type="email" id="login-email" placeholder="Email">
+        <input type="password" id="login-password" placeholder="Password" value="password123">
+        <button onclick="testLogin()">Login</button>
+      </div>
+      <div id="test4-output" class="output"></div>
+    </div>
+
+    <div class="test">
+      <strong>💾 TEST 5: Check localStorage</strong>
+      <button onclick="checkStorage()">Check Storage</button>
+      <div id="test5-output" class="output"></div>
+    </div>
+
+    <div class="test info">
+      <strong>📋 Recommended Steps:</strong>
+      <ol>
+        <li>Run TEST 1 to check API URL configuration</li>
+        <li>Run TEST 2 to verify backend is responding</li>
+        <li>Run TEST 3 to register a new test account</li>
+        <li>Copy the email and run TEST 4 to login</li>
+        <li>Run TEST 5 to verify data is stored</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    // Set initial user agent
+    document.getElementById('ua').textContent = navigator.userAgent.substring(0, 60) + '...';
+    document.getElementById('ls').textContent = typeof(Storage) !== 'undefined' ? '✅ Yes' : '❌ No';
+    document.getElementById('ss').textContent = typeof(Storage) !== 'undefined' ? '✅ Yes' : '❌ No';
+
+    // Utility functions
+    function log(elementId, message, type = 'info') {
+      const output = document.getElementById(elementId);
+      const timestamp = new Date().toLocaleTimeString();
+      const prefix = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+      output.innerHTML += `<div style="color: ${type === 'success' ? 'green' : type === 'error' ? 'red' : 'blue'}">
+        [${timestamp}] ${prefix} ${message}</div>`;
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function clear(elementId) {
+      document.getElementById(elementId).innerHTML = '';
+    }
+
+    // TEST 1: API Configuration
+    async function testAPIConfig() {
+      clear('test1-output');
+      log('test1-output', 'Checking API configuration...');
+      
+      const apiUrl = 'http://localhost:5000/api';
+      log('test1-output', `API URL: ${apiUrl}`);
+      
+      // Check if fetch is available
+      if (typeof fetch !== 'undefined') {
+        log('test1-output', 'Fetch API: ✅ Available', 'success');
+      } else {
+        log('test1-output', 'Fetch API: ❌ Not available', 'error');
+      }
+
+      // Check localStorage
+      try {
+        localStorage.setItem('test', 'test');
+        localStorage.removeItem('test');
+        log('test1-output', 'localStorage: ✅ Working', 'success');
+      } catch (e) {
+        log('test1-output', 'localStorage: ❌ Not working - ' + e.message, 'error');
+      }
+
+      log('test1-output', 'Configuration check complete', 'success');
+    }
+
+    // TEST 2: Backend Connection
+    async function testBackend() {
+      clear('test2-output');
+      log('test2-output', 'Testing backend connection...');
+      
+      try {
+        const response = await fetch('http://localhost:5000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'test@test.com', password: 'test' })
+        });
+        
+        log('test2-output', `HTTP Status: ${response.status}`, 'success');
+        const data = await response.json();
+        log('test2-output', `Response: ${JSON.stringify(data, null, 2)}`);
+        
+        if (response.status === 401) {
+          log('test2-output', '✅ Backend is responding (401 = credentials required)', 'success');
+        }
+      } catch (error) {
+        log('test2-output', `❌ Connection failed: ${error.message}`, 'error');
+        log('test2-output', 'Make sure backend server is running on port 5000', 'error');
+      }
+    }
+
+    // TEST 3: Registration
+    async function testRegistration() {
+      clear('test3-output');
+      const name = document.getElementById('reg-name').value;
+      const email = document.getElementById('reg-email').value || `test${Date.now()}@test.com`;
+      const password = document.getElementById('reg-password').value;
+      
+      log('test3-output', `Registering: ${email}`);
+      
+      try {
+        const response = await fetch('http://localhost:5000/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password, role: 'buyer' })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          log('test3-output', `✅ Registration successful!`, 'success');
+          log('test3-output', `User ID: ${data.user.id}`);
+          log('test3-output', `Email: ${data.user.email}`);
+          log('test3-output', `Token stored: ${data.token.substring(0, 30)}...`, 'success');
+          
+          // Store for later use
+          document.getElementById('login-email').value = email;
+        } else {
+          log('test3-output', `❌ Registration failed: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        log('test3-output', `❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    // TEST 4: Login
+    async function testLogin() {
+      clear('test4-output');
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      
+      if (!email) {
+        log('test4-output', 'Please enter an email', 'error');
+        return;
+      }
+      
+      log('test4-output', `Logging in: ${email}`);
+      
+      try {
+        const response = await fetch('http://localhost:5000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          log('test4-output', `✅ Login successful!`, 'success');
+          log('test4-output', `User: ${data.user.name}`);
+          log('test4-output', `Role: ${data.user.role}`);
+          log('test4-output', `Token: ${data.token.substring(0, 30)}...`, 'success');
+          
+          // Store in localStorage like the app does
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          log('test4-output', 'Data saved to localStorage ✅', 'success');
+        } else {
+          log('test4-output', `❌ Login failed: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        log('test4-output', `❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    // TEST 5: Check Storage
+    function checkStorage() {
+      clear('test5-output');
+      
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+      
+      if (token) {
+        log('test5-output', `✅ Token found: ${token.substring(0, 30)}...`, 'success');
+      } else {
+        log('test5-output', '❌ No token in localStorage', 'error');
+      }
+      
+      if (user) {
+        try {
+          const userData = JSON.parse(user);
+          log('test5-output', `✅ User found: ${userData.name}`, 'success');
+          log('test5-output', `User data: ${JSON.stringify(userData, null, 2)}`);
+        } catch (e) {
+          log('test5-output', `❌ Invalid user data: ${e.message}`, 'error');
+        }
+      } else {
+        log('test5-output', '❌ No user data in localStorage', 'error');
+      }
+      
+      log('test5-output', 'Local Storage Contents:', 'info');
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const value = localStorage.getItem(key);
+        log('test5-output', `${key}: ${value.substring(0, 50)}...`);
+      }
+    }
+  </script>
+</body>
+</html>
