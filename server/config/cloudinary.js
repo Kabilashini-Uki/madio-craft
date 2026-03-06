@@ -1,20 +1,19 @@
-const cloudinary = require('cloudinary').v2;
+import { v2 as cloudinary } from 'cloudinary';
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
+  api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const uploadImage = async (file, folder = 'madio-craft/products') => {
+export const uploadImage = async (file, folder = 'madio-craft/products') => {
   try {
     const result = await cloudinary.uploader.upload(file, {
       folder,
       resource_type: 'auto',
     });
-    
     return {
-      url: result.secure_url,
+      url:      result.secure_url,
       publicId: result.public_id,
     };
   } catch (error) {
@@ -23,7 +22,7 @@ const uploadImage = async (file, folder = 'madio-craft/products') => {
   }
 };
 
-const deleteImage = async (publicId) => {
+export const deleteImage = async (publicId) => {
   try {
     await cloudinary.uploader.destroy(publicId);
   } catch (error) {
@@ -31,4 +30,4 @@ const deleteImage = async (publicId) => {
   }
 };
 
-module.exports = { uploadImage, deleteImage };
+export default cloudinary;

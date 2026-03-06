@@ -1,125 +1,134 @@
-const User = require('../models/User');
-const jwt = require('jsonwebtoken');
+// controllers/authController.js
+import jwt     from 'jsonwebtoken';
+import User    from '../models/User.js';
+import Artisan from '../models/Artisan.js';
 
-// Generate JWT Token
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
-  });
-};
+const generateToken = (id) =>
+  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '30d' });
 
-// @desc    Register user
-// @route   POST /api/auth/register
-// @access  Public
-exports.register = async (req, res) => {
+export const register = async (req, res) => {
   try {
     const { name, email, password, role, artisanProfile } = req.body;
+    console.log('Register attempt:', { name, email, role });
 
-    // Check if user exists
     const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
+    if (userExists) return res.status(400).json({ message: 'User already exists' });
 
-    // Create user
-    const userData = {
-      name,
-      email,
-      password,
-      role: role || 'buyer'
-    };
+    const userData = { name, email, password, role: role || 'buyer' };
 
-    // Add artisan profile if registering as artisan
     if (role === 'artisan' && artisanProfile) {
-      userData.artisanProfile = artisanProfile;
+      userData.artisanProfile = {
+        businessName:      artisanProfile.businessName || `${name}'s Crafts`,
+        description:       artisanProfile.description  || '',
+        specialties:       artisanProfile.specialties  || [],
+        yearsOfExperience: artisanProfile.yearsOfExperience || 0,
+        socialLinks:       { instagram: '', facebook: '', website: '' },
+      };
     }
 
     const user = await User.create(userData);
+    console.log('User created:', user._id);
 
-    // Generate token
-    const token = generateToken(user._id);
+    let createdArtisan = null;
+    if (role === 'artisan' && artisanProfile) {
+      try {
+        createdArtisan = await Artisan.create({
+          user:              user._id,
+          businessName:      artisanProfile.businessName || `${name}'s Crafts`,
+          description:       artisanProfile.description  || '',
+          specialties:       artisanProfile.specialties  || [],
+          yearsOfExperience: artisanProfile.yearsOfExperience || 0,
+        });
+        console.log('Artisan profile created:', createdArtisan._id);
+      } catch (e) {
+        console.error('Failed to create artisan profile:', e);
+      }
+    }
 
     res.status(201).json({
       success: true,
-      token,
+      message: 'User registered successfully',
+      token:   generateToken(user._id),
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-        ...(user.role === 'artisan' && { artisanProfile: user.artisanProfile })
-      }
+        id:             user._id,
+        name:           user.name,
+        email:          user.email,
+        role:           user.role,
+        avatar:         user.avatar,
+        artisanProfile: user.artisanProfile,
+      },
+      ...(createdArtisan && { artisan: createdArtisan }),
     });
   } catch (error) {
-    console.error(error);
-    // Handle validation errors
+    console.error('Registration error:', error);
     if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(e => e.message);
-      return res.status(400).json({ message: messages.join(', ') });
+      return res.status(400).json({ message: Object.values(error.errors).map((e) => e.message).join(', ') });
     }
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      return res.status(400).json({ message: 'Email already in use' });
-    }
-    res.status(500).json({ message: 'Server error' });
+    if (error.code === 11000) return res.status(400).json({ message: 'Email already in use' });
+    res.status(500).json({ message: 'Server error: ' + error.message });
   }
 };
 
-// @desc    Login user
-// @route   POST /api/auth/login
-// @access  Public
-exports.login = async (req, res) => {
+export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check for user
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
+    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
 
-    // Check password
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
+    if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
 
-    // Generate token
-    const token = generateToken(user._id);
+    let artisanData = null;
+    if (user.role === 'artisan') artisanData = await Artisan.findOne({ user: user._id });
 
     res.json({
       success: true,
-      token,
+      token:   generateToken(user._id),
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-        ...(user.role === 'artisan' && { artisanProfile: user.artisanProfile })
-      }
+        id:             user._id,
+        name:           user.name,
+        email:          user.email,
+        role:           user.role,
+        avatar:         user.avatar,
+        artisanProfile: user.artisanProfile,
+        ...(artisanData && { artisan: artisanData }),
+      },
     });
   } catch (error) {
-    console.error(error);
-    // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(e => e.message);
-      return res.status(400).json({ message: messages.join(', ') });
-    }
+    console.error('Login error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc    Get current user
-// @route   GET /api/auth/me
-// @access  Private
-exports.getMe = async (req, res) => {
+export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    res.json({ success: true, user });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    let artisanData = null;
+    if (user.role === 'artisan') artisanData = await Artisan.findOne({ user: user._id });
+
+    res.json({
+      success: true,
+      user: {
+        id:             user._id,
+        name:           user.name,
+        email:          user.email,
+        role:           user.role,
+        avatar:         user.avatar,
+        bio:            user.bio,
+        location:       user.location,
+        phone:          user.phone,
+        artisanProfile: user.artisanProfile,
+        buyerProfile:   user.buyerProfile,
+        isVerified:     user.isVerified,
+        createdAt:      user.createdAt,
+        ...(artisanData && { artisan: artisanData }),
+      },
+    });
   } catch (error) {
-    console.error(error);
+    console.error('Get profile error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

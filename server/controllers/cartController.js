@@ -1,31 +1,39 @@
-const Cart = require('../models/Cart');
-const Product = require('../models/Product');
+// controllers/cartController.js
+import Cart    from '../models/Cart.js';
+import Product from '../models/Product.js';
 
-// Get user's cart
-exports.getCart = async (req, res) => {
+const SRI_LANKA_ZONES = {
+  'Batticaloa': 'eastern', 'Ampara': 'eastern', 'Trincomalee': 'eastern',};
+
+export const getCart = async (req, res) => {
   try {
     const userId = req.user.id;
     let cart = await Cart.findOne({ user: userId }).populate('items.product');
 
     if (!cart) {
-      cart = new Cart({ user: userId, items: [] });
+      cart = new Cart({ user: userId, items: [], coupon: { code: null, discountType: null, discountValue: 0, minOrderAmount: 0, appliedAt: null } });
       await cart.save();
     }
 
-    console.log('Cart retrieved:', { userId, itemCount: cart.items.length });
+    if (!cart.coupon || typeof cart.coupon !== 'object') {
+      cart.coupon = { code: null, discountType: null, discountValue: 0, minOrderAmount: 0, appliedAt: null };
+    }
+
+    const deliveryEstimate = cart.getDeliveryEstimate?.() ?? {
+      min: new Date(Date.now() + 3 * 86400000),
+      max: new Date(Date.now() + 7 * 86400000),
+      text: '3-7 business days',
+    };
 
     res.json({
       success: true,
       cart: {
-        _id: cart._id,
-        items: cart.items,
-        coupon: cart.coupon,
-        subtotal: cart.subtotal,
-        tax: cart.tax,
-        shipping: cart.shipping,
-        discount: cart.discount,
-        total: cart.total
-      }
+        _id: cart._id, items: cart.items, coupon: cart.coupon,
+        subtotal: cart.subtotal, vat: cart.vat, nbt: cart.nbt, cess: cart.cess,
+        shippingCost: cart.shippingCost, shippingZone: cart.shippingZone,
+        deliveryMethod: cart.deliveryMethod, discount: cart.discount, total: cart.total,
+        currency: 'LKR', hasFreeShipping: cart.subtotal >= 5000, deliveryEstimate,
+      },
     });
   } catch (error) {
     console.error('Get cart error:', error);
@@ -33,74 +41,44 @@ exports.getCart = async (req, res) => {
   }
 };
 
-// Add to cart
-exports.addToCart = async (req, res) => {
+export const addToCart = async (req, res) => {
   try {
     const { productId, quantity = 1, customization = null } = req.body;
     const userId = req.user.id;
 
-    console.log('Adding to cart:', { productId, quantity, userId });
-
-    // Validate product exists
     const product = await Product.findById(productId);
-    if (!product) {
-      console.log('Product not found:', productId);
-      return res.status(404).json({ success: false, message: 'Product not found' });
-    }
+    if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+    if (product.stock < quantity) return res.status(400).json({ success: false, message: `Only ${product.stock} items available` });
 
-    // Calculate price
     let price = product.price;
-    if (customization && customization.options) {
-      customization.options.forEach(opt => {
-        price += opt.priceAdjustment || 0;
-      });
+    if (customization?.options) {
+      customization.options.forEach((opt) => { price += opt.priceAdjustment || 0; });
     }
 
-    // Get or create cart
     let cart = await Cart.findOne({ user: userId });
     if (!cart) {
-      cart = new Cart({ user: userId, items: [] });
+      cart = new Cart({ user: userId, items: [], coupon: { code: null, discountType: null, discountValue: 0, minOrderAmount: 0, appliedAt: null } });
     }
 
-    // Check if item already exists in cart with same customization
-    const existingItemIndex = cart.items.findIndex(item =>
-      item.product.toString() === productId.toString() &&
-      JSON.stringify(item.customization) === JSON.stringify(customization || {})
+    const existingIndex = cart.items.findIndex(
+      (i) => i.product.toString() === productId.toString() && JSON.stringify(i.customization) === JSON.stringify(customization || {})
     );
 
-    if (existingItemIndex >= 0) {
-      // Update quantity if same product with same customization
-      cart.items[existingItemIndex].quantity += quantity;
-      cart.items[existingItemIndex].totalPrice = cart.items[existingItemIndex].price * cart.items[existingItemIndex].quantity;
+    if (existingIndex >= 0) {
+      const newQty = cart.items[existingIndex].quantity + quantity;
+      if (product.stock < newQty) return res.status(400).json({ success: false, message: `Cannot add more than ${product.stock} items` });
+      cart.items[existingIndex].quantity   = newQty;
+      cart.items[existingIndex].totalPrice = price * newQty;
     } else {
-      // Add new item
-      cart.items.push({
-        product: productId,
-        quantity,
-        customization: customization || {},
-        price,
-        totalPrice: price * quantity
-      });
+      cart.items.push({ product: productId, quantity, customization: customization || {}, price, totalPrice: price * quantity });
     }
 
     await cart.save();
     const populatedCart = await cart.populate('items.product');
 
-    console.log('Cart saved successfully:', { itemCount: cart.items.length });
-
     res.json({
-      success: true,
-      message: 'Added to cart successfully',
-      cart: {
-        _id: populatedCart._id,
-        items: populatedCart.items,
-        coupon: populatedCart.coupon,
-        subtotal: populatedCart.subtotal,
-        tax: populatedCart.tax,
-        shipping: populatedCart.shipping,
-        discount: populatedCart.discount,
-        total: populatedCart.total
-      }
+      success: true, message: 'Added to cart successfully',
+      cart: { _id: populatedCart._id, items: populatedCart.items, subtotal: populatedCart.subtotal, total: populatedCart.total, currency: 'LKR' },
     });
   } catch (error) {
     console.error('Cart add error:', error);
@@ -108,191 +86,139 @@ exports.addToCart = async (req, res) => {
   }
 };
 
-// Update cart item quantity
-exports.updateQuantity = async (req, res) => {
+export const updateShippingZone = async (req, res) => {
   try {
-    const { itemId } = req.params;
-    const { quantity } = req.body;
-    const userId = req.user.id;
+    const { district } = req.body;
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) return res.status(404).json({ success: false, message: 'Cart not found' });
 
-    if (quantity < 1) {
-      return res.status(400).json({ success: false, message: 'Quantity must be at least 1' });
-    }
-
-    const cart = await Cart.findOne({ user: userId });
-    if (!cart) {
-      return res.status(404).json({ success: false, message: 'Cart not found' });
-    }
-
-    const itemIndex = cart.items.findIndex(item => item._id.toString() === itemId);
-    if (itemIndex === -1) {
-      return res.status(404).json({ success: false, message: 'Item not found in cart' });
-    }
-
-    cart.items[itemIndex].quantity = quantity;
-    cart.items[itemIndex].totalPrice = cart.items[itemIndex].price * quantity;
-
+    cart.shippingZone = SRI_LANKA_ZONES[district] || 'colombo';
     await cart.save();
-    const populatedCart = await cart.populate('items.product');
 
-    res.json({
-      success: true,
-      message: 'Quantity updated',
-      cart: {
-        _id: populatedCart._id,
-        items: populatedCart.items,
-        coupon: populatedCart.coupon,
-        subtotal: populatedCart.subtotal,
-        tax: populatedCart.tax,
-        shipping: populatedCart.shipping,
-        discount: populatedCart.discount,
-        total: populatedCart.total
-      }
-    });
+    res.json({ success: true, message: 'Shipping zone updated', shippingZone: cart.shippingZone, shippingCost: cart.shippingCost, hasFreeShipping: cart.subtotal >= 5000 });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Remove from cart
-exports.removeFromCart = async (req, res) => {
+export const updateDeliveryMethod = async (req, res) => {
   try {
-    const { itemId } = req.params;
-    const userId = req.user.id;
+    const { method } = req.body;
+    if (!['standard', 'express', 'pickup'].includes(method)) return res.status(400).json({ success: false, message: 'Invalid delivery method' });
 
-    const cart = await Cart.findOne({ user: userId });
-    if (!cart) {
-      return res.status(404).json({ success: false, message: 'Cart not found' });
-    }
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) return res.status(404).json({ success: false, message: 'Cart not found' });
 
-    cart.items = cart.items.filter(item => item._id.toString() !== itemId);
+    cart.deliveryMethod = method;
+    if (method === 'express')       cart.estimatedDeliveryDays = { min: 1, max: 2 };
+    else if (method === 'pickup')  { cart.estimatedDeliveryDays = { min: 1, max: 1 }; cart.shippingCost = 0; }
+    else                            cart.estimatedDeliveryDays = { min: 3, max: 7 };
+
     await cart.save();
-    const populatedCart = await cart.populate('items.product');
-
-    res.json({
-      success: true,
-      message: 'Item removed from cart',
-      cart: {
-        _id: populatedCart._id,
-        items: populatedCart.items,
-        coupon: populatedCart.coupon,
-        subtotal: populatedCart.subtotal,
-        tax: populatedCart.tax,
-        shipping: populatedCart.shipping,
-        discount: populatedCart.discount,
-        total: populatedCart.total
-      }
-    });
+    res.json({ success: true, message: 'Delivery method updated', deliveryMethod: method, shippingCost: cart.shippingCost, estimatedDeliveryDays: cart.estimatedDeliveryDays });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Clear cart
-exports.clearCart = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const cart = await Cart.findOne({ user: userId });
-
-    if (!cart) {
-      return res.status(404).json({ success: false, message: 'Cart not found' });
-    }
-
-    cart.items = [];
-    cart.coupon = { code: null, type: null, value: 0 };
-    await cart.save();
-
-    res.json({
-      success: true,
-      message: 'Cart cleared',
-      cart: {
-        _id: cart._id,
-        items: [],
-        coupon: cart.coupon,
-        subtotal: 0,
-        tax: 0,
-        shipping: 0,
-        discount: 0,
-        total: 0
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// Apply coupon
-exports.applyCoupon = async (req, res) => {
+export const applyCoupon = async (req, res) => {
   try {
     const { code } = req.body;
-    const userId = req.user.id;
-
-    // Mock coupon database (replace with real DB in production)
     const validCoupons = {
-      'WELCOME10': { type: 'percentage', value: 10 },
-      'SAVE50': { type: 'fixed', value: 50 },
-      'MADIO20': { type: 'percentage', value: 20 },
-      'ARTISAN100': { type: 'fixed', value: 100 }
+      WELCOME10:  { discountType: 'percentage', discountValue: 10,  minOrderAmount: 1000, description: '10% off on orders above Rs. 1,000' },
+      SAVE500:    { discountType: 'fixed',      discountValue: 500, minOrderAmount: 3000, description: 'Rs. 500 off on orders above Rs. 3,000' },
+      FREESHIP:   { discountType: 'fixed',      discountValue: 0,   minOrderAmount: 2500, description: 'Free shipping on orders above Rs. 2,500', freeShipping: true },
+      LANKACRAFT: { discountType: 'percentage', discountValue: 15,  minOrderAmount: 2000, description: '15% off on all handcrafted items' },
+      AVURUDU:    { discountType: 'percentage', discountValue: 20,  minOrderAmount: 5000, description: 'Avurudu special - 20% off' },
+      CEYLONTEA:  { discountType: 'fixed',      discountValue: 250, minOrderAmount: 1500, description: 'Rs. 250 off on your purchase' },
     };
 
-    if (!validCoupons[code.toUpperCase()]) {
-      return res.status(400).json({ success: false, message: 'Invalid coupon code' });
+    const couponCode = code.toUpperCase().trim();
+    if (!validCoupons[couponCode]) return res.status(400).json({ success: false, message: 'Invalid coupon code' });
+
+    const couponData = validCoupons[couponCode];
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) return res.status(404).json({ success: false, message: 'Cart not found' });
+
+    if (cart.subtotal < couponData.minOrderAmount) {
+      return res.status(400).json({ success: false, message: `This coupon requires minimum order of Rs. ${couponData.minOrderAmount.toLocaleString()}` });
     }
 
-    const couponData = validCoupons[code.toUpperCase()];
-    const cart = await Cart.findOne({ user: userId });
-
-    if (!cart) {
-      return res.status(404).json({ success: false, message: 'Cart not found' });
-    }
-
-    cart.coupon = {
-      code: code.toUpperCase(),
-      type: couponData.type,
-      value: couponData.value,
-      appliedAt: new Date()
-    };
+    cart.coupon = { code: couponCode, discountType: couponData.discountType, discountValue: couponData.discountValue, minOrderAmount: couponData.minOrderAmount, appliedAt: new Date() };
+    if (couponData.freeShipping) cart.shippingCost = 0;
 
     await cart.save();
-
-    res.json({
-      success: true,
-      message: 'Coupon applied successfully',
-      coupon: cart.coupon,
-      total: cart.total
-    });
+    res.json({ success: true, message: 'Coupon applied successfully', coupon: { code: cart.coupon.code, discountType: cart.coupon.discountType, discountValue: cart.coupon.discountValue, description: couponData.description }, discount: cart.discount, total: cart.total });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Remove coupon
-exports.removeCoupon = async (req, res) => {
+export const removeCoupon = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const cart = await Cart.findOne({ user: userId });
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) return res.status(404).json({ success: false, message: 'Cart not found' });
 
-    if (!cart) {
-      return res.status(404).json({ success: false, message: 'Cart not found' });
-    }
-
-    cart.coupon = { code: null, type: null, value: 0 };
+    cart.coupon = { code: null, discountType: null, discountValue: 0, minOrderAmount: 0, appliedAt: null };
     await cart.save();
 
-    res.json({
-      success: true,
-      message: 'Coupon removed',
-      cart: {
-        _id: cart._id,
-        items: cart.items,
-        coupon: cart.coupon,
-        subtotal: cart.subtotal,
-        tax: cart.tax,
-        shipping: cart.shipping,
-        discount: cart.discount,
-        total: cart.total
-      }
-    });
+    res.json({ success: true, message: 'Coupon removed successfully', discount: 0, total: cart.total });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateQuantity = async (req, res) => {
+  try {
+    const { itemId }   = req.params;
+    const { quantity } = req.body;
+
+    if (quantity < 1) return res.status(400).json({ success: false, message: 'Quantity must be at least 1' });
+
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) return res.status(404).json({ success: false, message: 'Cart not found' });
+
+    const itemIndex = cart.items.findIndex((i) => i._id.toString() === itemId);
+    if (itemIndex === -1) return res.status(404).json({ success: false, message: 'Item not found in cart' });
+
+    const product = await Product.findById(cart.items[itemIndex].product);
+    if (product?.stock < quantity) return res.status(400).json({ success: false, message: `Only ${product.stock} items available` });
+
+    cart.items[itemIndex].quantity   = quantity;
+    cart.items[itemIndex].totalPrice = cart.items[itemIndex].price * quantity;
+    await cart.save();
+
+    res.json({ success: true, message: 'Quantity updated', cart: { subtotal: cart.subtotal, total: cart.total, itemTotal: cart.items[itemIndex].totalPrice } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const removeFromCart = async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) return res.status(404).json({ success: false, message: 'Cart not found' });
+
+    cart.items = cart.items.filter((i) => i._id.toString() !== itemId);
+    await cart.save();
+
+    res.json({ success: true, message: 'Item removed from cart', cart: { items: cart.items, subtotal: cart.subtotal, total: cart.total } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const clearCart = async (req, res) => {
+  try {
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) return res.status(404).json({ success: false, message: 'Cart not found' });
+
+    cart.items  = [];
+    cart.coupon = { code: null, discountType: null, discountValue: 0, minOrderAmount: 0, appliedAt: null };
+    await cart.save();
+
+    res.json({ success: true, message: 'Cart cleared', cart: { items: [], subtotal: 0, total: 0 } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

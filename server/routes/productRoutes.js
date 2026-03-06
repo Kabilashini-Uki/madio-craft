@@ -1,24 +1,23 @@
-const express = require('express');
-const router = express.Router();
-const { 
-  createProduct, 
-  getProducts, 
-  getProduct, 
-  updateProduct, 
-  deleteProduct,
-  addReview 
-} = require('../controllers/productController');
-const { protect, authorize } = require('../middleware/auth');
-const { uploadMultiple } = require('../middleware/upload');
+// routes/productRoutes.js
+import { Router }             from 'express';
+import {
+  createProduct, getProducts, getProduct,
+  updateProduct, deleteProduct, addReview,
+  getMyProducts, getCategoryCounts,
+}                             from '../controllers/productController.js';
+import { protect, authorize } from '../middleware/auth.js';
+import { uploadProductImages } from '../middleware/upload.js';
 
-// Public routes
-router.get('/', getProducts);
-router.get('/:id', getProduct);
+const router = Router();
 
-// Protected routes
-router.post('/', protect, authorize('artisan'), uploadMultiple, createProduct);
-router.put('/:id', protect, authorize('artisan'), uploadMultiple, updateProduct);
-router.delete('/:id', protect, authorize('artisan', 'admin'), deleteProduct);
-router.post('/:id/reviews', protect, authorize('buyer'), addReview);
+router.get('/',               getProducts);
+router.get('/category-counts',getCategoryCounts);
+router.get('/my',             protect, authorize('artisan'), getMyProducts);
+router.get('/:id',            getProduct);
 
-module.exports = router;
+router.post('/',              protect, authorize('artisan'), uploadProductImages, createProduct);
+router.put('/:id',            protect, authorize('artisan'), uploadProductImages, updateProduct);
+router.delete('/:id',         protect, authorize('artisan', 'admin'), deleteProduct);
+router.post('/:id/reviews',   protect, addReview);
+
+export default router;

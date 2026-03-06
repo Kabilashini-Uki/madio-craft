@@ -1,350 +1,172 @@
 // controllers/orderController.js
-const Order = require('../models/Order');
-const Product = require('../models/Product');
-const { ChatRoom } = require('../models/ChatRoom');
-const crypto = require('crypto');
-const Razorpay = require('razorpay');
+import Order   from '../models/Order.js';
+import Product from '../models/Product.js';
+import Cart    from '../models/Cart.js';
 
-let razorpayInstance = null;
-
-// Initialize Razorpay
-try {
-  if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-    razorpayInstance = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET
-    });
-    console.log('✅ Razorpay initialized successfully');
-  } else {
-    console.log('⚠️  Razorpay credentials not found. Payment in test mode.');
-  }
-} catch (error) {
-  console.error('❌ Failed to initialize Razorpay:', error.message);
-}
-
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Private
-exports.createOrder = async (req, res) => {
+export const createOrder = async (req, res) => {
   try {
-    const { items, shippingAddress, notes, paymentMethod = 'razorpay' } = req.body;
+    const { items, shippingAddress, subtotal, shippingCost, tax, totalAmount } = req.body;
     const buyer = req.user.id;
 
-    // Calculate total amount and validate items
-    let totalAmount = 0;
-    let artisanId = null;
+    if (!items?.length) return res.status(400).json({ message: 'No items in order' });
+
+    let artisanId  = null;
+    const orderItems = [];
 
     for (const item of items) {
       const product = await Product.findById(item.product);
-      if (!product || !product.isActive) {
-        return res.status(400).json({ 
-          message: `Product ${item.product} not available` 
-        });
-      }
+      if (!product?.isActive) return res.status(400).json({ message: `Product ${item.product} not available` });
+      if (product.stock < item.quantity) return res.status(400).json({ message: `Only ${product.stock} units of ${product.name} available` });
 
-      // Set artisan ID (all items should be from same artisan)
       if (!artisanId) {
         artisanId = product.artisan;
       } else if (artisanId.toString() !== product.artisan.toString()) {
-        return res.status(400).json({ 
-          message: 'All items must be from the same artisan' 
-        });
+        return res.status(400).json({ message: 'All items must be from the same artisan' });
       }
 
-      // Calculate item total with customizations
-      let itemTotal = product.price * item.quantity;
-      if (item.customization && item.customization.options) {
-        item.customization.options.forEach(opt => {
-          itemTotal += opt.priceAdjustment || 0;
-        });
-      }
-
-      totalAmount += itemTotal;
+      orderItems.push({ product: product._id, quantity: item.quantity, customization: item.customization || {}, price: item.price, totalPrice: item.price * item.quantity });
     }
 
-    // Create Razorpay order
-    let razorpayOrder = null;
-    if (razorpayInstance) {
-      razorpayOrder = await razorpayInstance.orders.create({
-        amount: Math.round(totalAmount * 100), // Convert to paise
-        currency: 'INR',
-        receipt: `receipt_${Date.now()}`,
-        payment_capture: 1
-      });
-    } else {
-      // Mock order for development
-      razorpayOrder = {
-        id: `order_${Date.now()}`,
-        amount: totalAmount * 100,
-        currency: 'INR',
-        receipt: `receipt_${Date.now()}`,
-        status: 'created'
-      };
-    }
+    const d       = new Date();
+    const orderId = `ORD${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}${Math.floor(Math.random()*10000).toString().padStart(4,'0')}`;
 
-    // Create order in database
     const order = await Order.create({
-      orderId: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      buyer,
-      artisan: artisanId,
-      items: items.map(item => ({
-        product: item.product,
-        quantity: item.quantity,
-        customization: item.customization || {},
-        price: item.price || 0,
-        totalPrice: item.price * item.quantity
-      })),
-      shippingAddress,
-      notes,
-      totalAmount,
-      finalAmount: totalAmount,
-      paymentInfo: {
-        razorpayOrderId: razorpayOrder.id,
-        amount: totalAmount,
-        currency: 'INR',
-        status: 'pending'
-      },
-      orderStatus: 'pending'
+      orderId, buyer, artisan: artisanId, items: orderItems, shippingAddress,
+      paymentMethod: 'cod', paymentStatus: 'pending', orderStatus: 'pending',
+      subtotal, shippingCost, tax, totalAmount,
+      estimatedDelivery: new Date(Date.now() + 5 * 86400000),
     });
 
-    // Create chat room for this order
     try {
-      const chatRoom = await ChatRoom.create({
-        participants: [buyer, artisanId],
-        order: order._id,
-        product: items[0]?.product,
-        type: 'order'
-      });
-      order.chatRoom = chatRoom._id;
-      await order.save();
-    } catch (chatError) {
-      console.error('Chat room creation error:', chatError);
-      // Don't fail the order if chat room creation fails
+      const io = req.app.get('io');
+      if (io) io.to(`user-${artisanId}`).emit('new-order', { message: `New order received! Order ID: ${orderId}`, orderId, amount: totalAmount });
+    } catch (e) { console.warn('Socket notify failed:', e.message); }
+
+    for (const item of orderItems) {
+      await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } });
     }
+
+    await Cart.findOneAndUpdate({ user: buyer }, { $set: { items: [] } });
 
     res.status(201).json({
       success: true,
-      order,
-      razorpayOrder,
-      key: process.env.RAZORPAY_KEY_ID,
-      isTestMode: !razorpayInstance
+      message: 'Order placed successfully! You will pay on delivery.',
+      order: { _id: order._id, orderId: order.orderId, totalAmount: order.totalAmount, paymentMethod: 'cod', estimatedDelivery: order.estimatedDelivery },
     });
   } catch (error) {
     console.error('Create order error:', error);
-    res.status(500).json({ message: 'Server error: ' + error.message });
+    res.status(500).json({ success: false, message: 'Server error: ' + error.message });
   }
 };
 
-// @desc    Verify payment
-// @route   POST /api/orders/verify-payment
-// @access  Private
-exports.verifyPayment = async (req, res) => {
-  try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-
-    if (!razorpay_order_id) {
-      return res.status(400).json({ message: 'Order ID is required' });
-    }
-
-    // Find the order
-    const order = await Order.findOne({ 
-      'paymentInfo.razorpayOrderId': razorpay_order_id 
-    });
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    // If Razorpay not configured, simulate successful payment
-    if (!razorpayInstance) {
-      order.paymentInfo.razorpayPaymentId = razorpay_payment_id || `mock_payment_${Date.now()}`;
-      order.paymentInfo.razorpaySignature = razorpay_signature || 'mock_signature';
-      order.paymentInfo.status = 'completed';
-      order.paymentInfo.paidAt = new Date();
-      order.orderStatus = 'confirmed';
-
-      await order.save();
-
-      return res.json({
-        success: true,
-        message: 'Payment verified successfully (test mode)',
-        order,
-        isTestMode: true
-      });
-    }
-
-    // Actual Razorpay verification
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
-      .digest('hex');
-
-    const isAuthentic = expectedSignature === razorpay_signature;
-
-    if (isAuthentic) {
-      order.paymentInfo.razorpayPaymentId = razorpay_payment_id;
-      order.paymentInfo.razorpaySignature = razorpay_signature;
-      order.paymentInfo.status = 'completed';
-      order.paymentInfo.paidAt = new Date();
-      order.orderStatus = 'confirmed';
-
-      await order.save();
-
-      res.json({
-        success: true,
-        message: 'Payment verified successfully',
-        order
-      });
-    } else {
-      res.status(400).json({ message: 'Payment verification failed' });
-    }
-  } catch (error) {
-    console.error('Verify payment error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// @desc    Get single order
-// @route   GET /api/orders/:id
-// @access  Private
-exports.getOrder = async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id)
-      .populate('buyer', 'name email avatar')
-      .populate('artisan', 'name email avatar artisanProfile.businessName')
-      .populate('items.product', 'name images price')
-      .populate('chatRoom');
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    // Check if user is authorized
-    if (order.buyer._id.toString() !== req.user.id && 
-        order.artisan._id.toString() !== req.user.id && 
-        req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-
-    res.json({
-      success: true,
-      order
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// @desc    Update order status
-// @route   PUT /api/orders/:id/status
-// @access  Private/Artisan
-exports.updateOrderStatus = async (req, res) => {
-  try {
-    const { status, trackingNumber, trackingUrl } = req.body;
-    const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    // Check if user is the artisan or admin
-    if (order.artisan.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-
-    order.orderStatus = status;
-    if (trackingNumber) order.trackingNumber = trackingNumber;
-    if (trackingUrl) order.trackingUrl = trackingUrl;
-    
-    if (status === 'shipped') {
-      order.estimatedDelivery = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    }
-
-    await order.save();
-
-    res.json({
-      success: true,
-      order
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// @desc    Get user orders
-// @route   GET /api/orders/my-orders
-// @access  Private
-exports.getMyOrders = async (req, res) => {
+export const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ buyer: req.user.id })
-      .populate('artisan', 'name avatar artisanProfile.businessName')
-      .populate('items.product', 'name images price')
+      .populate('artisan', 'name artisanProfile.businessName')
+      .populate('items.product', 'name images')
       .sort('-createdAt');
 
-    res.json({
-      success: true,
-      orders
-    });
+    res.json({ success: true, orders });
   } catch (error) {
-    console.error(error);
+    console.error('Get orders error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc    Get artisan orders
-// @route   GET /api/orders/artisan-orders
-// @access  Private/Artisan
-exports.getArtisanOrders = async (req, res) => {
+export const getOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('buyer',   'name email')
+      .populate('artisan', 'name artisanProfile.businessName')
+      .populate('items.product', 'name images price');
+
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    const isAuthorized =
+      order.buyer._id.toString() === req.user.id ||
+      order.artisan._id.toString() === req.user.id ||
+      req.user.role === 'admin';
+
+    if (!isAuthorized) return res.status(403).json({ message: 'Not authorized' });
+
+    res.json({ success: true, order });
+  } catch (error) {
+    console.error('Get order error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// GET /api/orders/artisan-orders — artisan's incoming orders
+export const getArtisanOrders = async (req, res) => {
   try {
     const orders = await Order.find({ artisan: req.user.id })
-      .populate('buyer', 'name avatar')
+      .populate('buyer', 'name email phone')
       .populate('items.product', 'name images price')
       .sort('-createdAt');
-
-    res.json({
-      success: true,
-      orders
-    });
+    res.json({ success: true, orders });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc    Test endpoint
-// @route   GET /api/orders/test
-// @access  Public
-exports.test = (req, res) => {
-  res.json({
-    success: true,
-    message: 'Orders route is working',
-    razorpayConfigured: !!razorpayInstance,
-    timestamp: new Date().toISOString()
-  });
-};
-// @desc    Cancel order
-// @route   PUT /api/orders/:id/cancel  (also accessible via status route with status=cancelled)
-exports.cancelOrder = async (req, res) => {
+// PUT /api/orders/:id/status — artisan updates order status
+export const updateOrderStatus = async (req, res) => {
   try {
+    const { status } = req.body;
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
-    
-    if (order.buyer.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-    
-    if (['shipped', 'delivered'].includes(order.orderStatus)) {
-      return res.status(400).json({ message: 'Cannot cancel shipped or delivered orders' });
-    }
-    
-    order.orderStatus = 'cancelled';
-    if (req.body.reason) order.notes = req.body.reason;
+
+    const isArtisan = order.artisan.toString() === req.user.id;
+    const isAdmin   = req.user.role === 'admin';
+    if (!isArtisan && !isAdmin) return res.status(403).json({ message: 'Not authorized' });
+
+    order.orderStatus = status;
     await order.save();
-    
+
+    // notify buyer via socket
+    try {
+      const io = req.app.get('io');
+      if (io) io.to(`user-${order.buyer}`).emit('order-status-update', { orderId: order.orderId, status });
+    } catch (e) {}
+
     res.json({ success: true, order });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// PUT /api/orders/:id/cancel — buyer cancels order
+export const cancelOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('artisan', 'name')
+      .populate('buyer', 'name');
+
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.buyer._id.toString() !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+    if (['delivered','cancelled'].includes(order.orderStatus))
+      return res.status(400).json({ message: 'Cannot cancel this order' });
+
+    order.orderStatus = 'cancelled';
+    await order.save();
+
+    // Restore stock
+    for (const item of order.items) {
+      await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity } });
+    }
+
+    // notify artisan and admin
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`user-${order.artisan._id}`).emit('order-cancelled', {
+          message: `Order ${order.orderId} was cancelled by buyer ${order.buyer.name}`,
+          orderId: order.orderId,
+        });
+      }
+    } catch (e) {}
+
+    res.json({ success: true, message: 'Order cancelled', order });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }

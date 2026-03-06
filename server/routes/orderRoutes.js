@@ -1,30 +1,19 @@
 // routes/orderRoutes.js
-const express = require('express');
-const router = express.Router();
-const { 
-  createOrder, 
-  verifyPayment, 
-  getMyOrders, 
-  getArtisanOrders,
-  updateOrderStatus,
-  getOrder,
-  cancelOrder,
-  test
-} = require('../controllers/orderController');
-const { protect, authorize } = require('../middleware/auth');
+import { Router } from 'express';
+import {
+  createOrder, getMyOrders, getOrder,
+  getArtisanOrders, updateOrderStatus, cancelOrder,
+} from '../controllers/orderController.js';
+import { protect, authorize } from '../middleware/auth.js';
 
-// Test route (must be before /:id)
-router.get('/test', test);
+const router = Router();
+router.use(protect);
 
-// Specific named routes (before param routes)
-router.get('/my-orders', protect, getMyOrders);
-router.get('/artisan-orders', protect, authorize('artisan', 'admin'), getArtisanOrders);
-router.post('/verify-payment', protect, verifyPayment);
+router.post('/', createOrder);
+router.get('/my-orders', getMyOrders);
+router.get('/artisan-orders', authorize('artisan','admin'), getArtisanOrders);
+router.get('/:id', getOrder);
+router.put('/:id/status', authorize('artisan','admin'), updateOrderStatus);
+router.put('/:id/cancel', cancelOrder);
 
-// Main CRUD
-router.post('/', protect, createOrder);
-router.get('/:id', protect, getOrder);
-router.put('/:id/status', protect, authorize('artisan', 'admin'), updateOrderStatus);
-router.put('/:id/cancel', protect, cancelOrder);
-
-module.exports = router;
+export default router;

@@ -1,16 +1,22 @@
-const express = require('express');
-const router = express.Router();
-const { 
-  getOrCreateRoom, 
-  getUserRooms, 
-  getRoomMessages, 
-  sendMessage 
-} = require('../controllers/chatController');
-const { protect } = require('../middleware/auth');
+// routes/chatRoutes.js
+import { Router } from 'express';
+import {
+  createCustomizationRoom,
+  getUserRooms,
+  getRoomMessages, sendMessage,
+  getOrCreateRoom,
+} from '../controllers/chatController.js';
+import { protect } from '../middleware/auth.js';
 
-router.post('/room', protect, getOrCreateRoom);
-router.get('/rooms', protect, getUserRooms);
-router.get('/rooms/:roomId/messages', protect, getRoomMessages);
-router.post('/messages', protect, sendMessage);
+const router = Router();
 
-module.exports = router;
+router.use(protect);
+
+router.post('/room', getOrCreateRoom);
+router.post('/customization/room', createCustomizationRoom); // Buyer starts customization request → notifies artisan
+router.get('/rooms', getUserRooms);
+router.get('/rooms/:roomId/messages', getRoomMessages);
+router.post('/message', sendMessage);
+
+export default router;
+
