@@ -1,27 +1,28 @@
-// pages/Register.js (Updated artisan section)
+// pages/Register.js
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   FiUser, FiMail, FiLock, FiArrowRight, FiEye, FiEyeOff,
-  FiBriefcase, FiShoppingBag, FiTag, FiCheck, FiPlus
+  FiBriefcase, FiShoppingBag, FiCheck, FiArrowLeft
 } from 'react-icons/fi';
-import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 const Register = () => {
+  const { register } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
     role: 'buyer',
-    // Artisan specific fields
     businessName: '',
     craftCategory: '',
-    otherCraft: '',
     yearsOfExperience: '',
-    craftDescription: ''
+    craftDescription: '',
+    location: '',
+    specialties: []
   });
   
   const [showPassword, setShowPassword] = useState(false);
@@ -30,7 +31,6 @@ const Register = () => {
   const [step, setStep] = useState(1);
   const navigate = useNavigate();
 
-  // Craft categories for artisans
   const craftCategories = [
     { id: 'pottery', name: 'Pottery & Ceramics', icon: '🏺' },
     { id: 'jewelry', name: 'Jewelry Making', icon: '💎' },
@@ -47,10 +47,59 @@ const Register = () => {
   ];
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    const { name, value } = e.target;
+    
+    if (name === 'craftCategory') {
+      setFormData(prev => ({
+        ...prev,
+        craftCategory: value,
+        specialties: value !== 'other' ? [value] : []
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
+  };
+
+  const validateStep = () => {
+    if (step === 1) {
+      if (!formData.name.trim()) {
+        toast.error('Please enter your name');
+        return false;
+      }
+      if (!formData.email.trim()) {
+        toast.error('Please enter your email');
+        return false;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        toast.error('Please enter a valid email address');
+        return false;
+      }
+    }
+    
+    if (step === 2 && formData.role === 'artisan') {
+      if (!formData.businessName?.trim()) {
+        toast.error('Please enter your business name');
+        return false;
+      }
+      if (!formData.craftCategory) {
+        toast.error('Please select your craft category');
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  const nextStep = () => {
+    if (!validateStep()) return;
+    setStep(step + 1);
+  };
+
+  const prevStep = () => {
+    setStep(step - 1);
   };
 
   const handleSubmit = async (e) => {
@@ -66,67 +115,65 @@ const Register = () => {
       return;
     }
 
-    // Validate artisan specific fields
-    if (formData.role === 'artisan') {
-      if (!formData.businessName) {
-        toast.error('Please enter your business name');
-        return;
-      }
-      if (!formData.craftCategory) {
-        toast.error('Please select your craft category');
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
-      const { confirmPassword, ...registerData } = formData;
+      const { confirmPassword, ...dataToSend } = formData;
       
-      // Prepare artisan profile data
-      if (formData.role === 'artisan') {
-        registerData.artisanProfile = {
-          businessName: formData.businessName,
-          specialties: [formData.craftCategory === 'other' ? formData.otherCraft : formData.craftCategory],
-          yearsOfExperience: parseInt(formData.yearsOfExperience) || 0,
-          description: formData.craftDescription
-        };
+      if (dataToSend.yearsOfExperience) {
+        dataToSend.yearsOfExperience = parseInt(dataToSend.yearsOfExperience) || 0;
       }
 
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/auth/register`, registerData);
+      if (dataToSend.role === 'artisan') {
+        dataToSend.artisanProfile = {
+          businessName: dataToSend.businessName,
+          description: dataToSend.craftDescription || '',
+          specialties: dataToSend.specialties.length > 0 ? 
+            dataToSend.specialties : 
+            (dataToSend.craftCategory ? [dataToSend.craftCategory] : []),
+          yearsOfExperience: dataToSend.yearsOfExperience || 0
+        };
+        
+        delete dataToSend.businessName;
+        delete dataToSend.craftCategory;
+        delete dataToSend.yearsOfExperience;
+        delete dataToSend.craftDescription;
+        delete dataToSend.specialties;
+      }
+
+      console.log('Sending registration data:', dataToSend);
       
-      if (response.data.success) {
-        toast.success('Account created successfully! Please login.');
-        navigate('/login');
+      const result = await register(dataToSend);
+      
+      if (result.success) {
+        toast.success('Registration successful!');
+        if (result.user.role === 'admin') {
+          navigate('/admin');
+        } else if (result.user.role === 'artisan') {
+          navigate('/artisan-dashboard');
+        } else {
+          navigate('/');
+        }
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Registration failed');
+      console.error('Registration error:', error);
+      toast.error(error.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const nextStep = () => {
-    if (step === 1) {
-      if (!formData.name) {
-        toast.error('Please enter your name');
-        return;
-      }
-      if (!formData.email) {
-        toast.error('Please enter your email');
-        return;
-      }
-    }
-    setStep(step + 1);
-  };
-
-  const prevStep = () => {
-    setStep(step - 1);
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
+        {/* Back to Home */}
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center space-x-2 text-gray-600 hover:text-primary mb-6 transition-colors"
+        >
+          <FiArrowLeft className="h-5 w-5" />
+          <span>Back to Home</span>
+        </button>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -249,7 +296,7 @@ const Register = () => {
                       type="button"
                       onClick={() => {
                         setFormData({...formData, role: 'buyer'});
-                        setStep(3);
+                        nextStep();
                       }}
                       className={`p-6 border-2 rounded-xl text-center transition-all ${
                         formData.role === 'buyer'
@@ -296,7 +343,7 @@ const Register = () => {
                   >
                     <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-700">
-                        Business Name
+                        Business Name *
                       </label>
                       <input
                         type="text"
@@ -311,50 +358,23 @@ const Register = () => {
 
                     <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-700">
-                        Craft Category
+                        Craft Category *
                       </label>
-                      <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto p-1">
-                        {craftCategories.map((craft) => (
-                          <button
-                            key={craft.id}
-                            type="button"
-                            onClick={() => setFormData({
-                              ...formData, 
-                              craftCategory: craft.id,
-                              otherCraft: craft.id === 'other' ? formData.otherCraft : ''
-                            })}
-                            className={`p-3 border rounded-lg text-left transition-all ${
-                              formData.craftCategory === craft.id
-                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                                : 'border-gray-200 hover:border-primary/30'
-                            }`}
-                          >
-                            <span className="text-2xl mb-1 block">{craft.icon}</span>
-                            <span className="text-xs font-medium">{craft.name}</span>
-                            {formData.craftCategory === craft.id && (
-                              <FiCheck className="absolute top-2 right-2 text-primary h-4 w-4" />
-                            )}
-                          </button>
+                      <select
+                        name="craftCategory"
+                        value={formData.craftCategory}
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
+                        required={formData.role === 'artisan'}
+                      >
+                        <option value="">Select a category</option>
+                        {craftCategories.map(craft => (
+                          <option key={craft.id} value={craft.id}>
+                            {craft.icon} {craft.name}
+                          </option>
                         ))}
-                      </div>
+                      </select>
                     </div>
-
-                    {formData.craftCategory === 'other' && (
-                      <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">
-                          Specify Your Craft
-                        </label>
-                        <input
-                          type="text"
-                          name="otherCraft"
-                          value={formData.otherCraft}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-xl"
-                          placeholder="e.g., Basketry, Calligraphy"
-                          required
-                        />
-                      </div>
-                    )}
 
                     <div className="space-y-2">
                       <label className="block text-sm font-medium text-gray-700">
@@ -365,10 +385,30 @@ const Register = () => {
                         name="yearsOfExperience"
                         value={formData.yearsOfExperience}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
                         placeholder="5"
                         min="0"
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Location *
+                      </label>
+                      <select
+                        name="location"
+                        value={formData.location}
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
+                        required={formData.role === 'artisan'}
+                      >
+                        <option value="">Select your location</option>
+                        <option value="Eravur">Eravur</option>
+                        <option value="Marudhamunai">Marudhamunai</option>
+                        <option value="Valaichenai">Valaichenai</option>
+                        <option value="Ottamavadi">Ottamavadi</option>
+                        <option value="Kaatankudy">Kaatankudy</option>
+                      </select>
                     </div>
 
                     <div className="space-y-2">
@@ -380,7 +420,7 @@ const Register = () => {
                         value={formData.craftDescription}
                         onChange={handleChange}
                         rows="3"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl resize-none"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
                         placeholder="Describe your techniques, materials, and inspiration..."
                       />
                     </div>
@@ -429,6 +469,7 @@ const Register = () => {
                       value={formData.password}
                       onChange={handleChange}
                       required
+                      minLength="6"
                       className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                       placeholder="••••••••"
                     />
@@ -456,6 +497,7 @@ const Register = () => {
                       value={formData.confirmPassword}
                       onChange={handleChange}
                       required
+                      minLength="6"
                       className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                       placeholder="••••••••"
                     />
@@ -482,7 +524,7 @@ const Register = () => {
                     disabled={loading}
                     className="flex-1 py-3 px-4 border border-transparent rounded-xl text-white bg-gradient-to-r from-primary to-primary-dark hover:shadow-lg transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {loading ? 'Creating...' : 'Create Account'}
+                    {loading ? 'Creating Account...' : 'Create Account'}
                   </button>
                 </div>
               </motion.div>

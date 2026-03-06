@@ -1,12 +1,12 @@
-// pages/Login.js
+// pages/Login.js - Update with better error handling
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiMail, FiLock, FiArrowRight, FiEye, FiEyeOff } from 'react-icons/fi';
-import axios from 'axios';
+import { FiMail, FiLock, FiArrowRight, FiEye, FiEyeOff, FiArrowLeft } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
-const Login = ({ setUser }) => {
+const Login = () => {
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -14,6 +14,7 @@ const Login = ({ setUser }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleChange = (e) => {
     setFormData({
@@ -24,20 +25,39 @@ const Login = ({ setUser }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    
+    // Basic validation
+    if (!formData.email.trim()) {
+      toast.error('Please enter your email');
+      return;
+    }
+    if (!formData.password.trim()) {
+      toast.error('Please enter your password');
+      return;
+    }
 
+    setLoading(true);
+    
     try {
-const response = await axios.post(`${process.env.REACT_APP_API_URL}/auth/login`, formData);      
-      if (response.data.success) {
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        setUser(response.data.user);
-        
+      const result = await login(formData.email, formData.password);
+      
+      if (result.success) {
         toast.success('Welcome back!');
-        navigate('/');
+        // Redirect based on role
+        if (result.user.role === 'admin') {
+          navigate('/admin');
+        } else if (result.user.role === 'artisan') {
+          navigate('/artisan-dashboard');
+        } else {
+          navigate('/');
+        }
+      } else {
+        // Error is already shown by the login function
+        console.error('Login failed:', result.error);
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      console.error('Unexpected login error:', error);
+      toast.error('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -46,6 +66,14 @@ const response = await axios.post(`${process.env.REACT_APP_API_URL}/auth/login`,
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
+        {/* Back to Home */}
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center space-x-2 text-gray-600 hover:text-primary mb-6 transition-colors"
+        >
+          <FiArrowLeft className="h-5 w-5" />
+          <span>Back to Home</span>
+        </button>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -135,13 +163,6 @@ const response = await axios.post(`${process.env.REACT_APP_API_URL}/auth/login`,
                   Remember me
                 </label>
               </div>
-
-              <Link
-                to="/forgot-password"
-                className="text-sm font-medium text-primary hover:text-primary-dark"
-              >
-                Forgot password?
-              </Link>
             </div>
 
             <button
@@ -175,21 +196,6 @@ const response = await axios.post(`${process.env.REACT_APP_API_URL}/auth/login`,
               <span>Create an account</span>
               <FiArrowRight className="h-4 w-4" />
             </Link>
-          </div>
-
-          {/* Demo Credentials */}
-          <div className="mt-8 p-4 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-500 mb-2">Demo Credentials:</p>
-            <div className="flex flex-col space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Email:</span>
-                <span className="font-mono text-gray-800">demo@madiocraft.com</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Password:</span>
-                <span className="font-mono text-gray-800">demo123</span>
-              </div>
-            </div>
           </div>
         </motion.div>
       </div>

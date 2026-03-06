@@ -1,4 +1,4 @@
-// src/components/CustomizationOptions.js
+
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
@@ -24,7 +24,7 @@ const CustomizationOptions = ({ product, onStartChat }) => {
       [optionName]: { value, priceAdjustment }
     }));
 
-    // Recalculate price
+    // reculculating the price
     let newPrice = product.price;
     Object.values({ ...options, [optionName]: { value, priceAdjustment } }).forEach(opt => {
       newPrice += opt.priceAdjustment || 0;
@@ -60,7 +60,7 @@ const CustomizationOptions = ({ product, onStartChat }) => {
     <div className="bg-white rounded-2xl shadow-lg p-6">
       <h3 className="text-xl font-bold text-gray-900 mb-6">Customize Your Product</h3>
 
-      {/* Customization Options */}
+     //customization options
       {product.customizationOptions?.map((option, index) => (
         <div key={index} className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -131,7 +131,7 @@ const CustomizationOptions = ({ product, onStartChat }) => {
         </div>
       ))}
 
-      {/* Dimensions */}
+     // dimensions
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
           <FiRuler className="mr-2" /> Dimensions (cm)
@@ -160,8 +160,7 @@ const CustomizationOptions = ({ product, onStartChat }) => {
           />
         </div>
       </div>
-
-      {/* Quantity */}
+// quantity of the product
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-3">Quantity</label>
         <div className="flex items-center space-x-4">
@@ -181,7 +180,7 @@ const CustomizationOptions = ({ product, onStartChat }) => {
         </div>
       </div>
 
-      {/* Deadline */}
+     // deadline for the product
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-3 flex items-center">
           <FiCalendar className="mr-2" /> Preferred Deadline (Optional)
@@ -195,7 +194,7 @@ const CustomizationOptions = ({ product, onStartChat }) => {
         />
       </div>
 
-      {/* Notes */}
+   // additional notes for the product
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-3">Additional Notes</label>
         <textarea
@@ -207,7 +206,7 @@ const CustomizationOptions = ({ product, onStartChat }) => {
         />
       </div>
 
-      {/* Price Estimate */}
+ // estimated price for the product
       <div className="bg-gray-50 rounded-xl p-4 mb-6">
         <div className="flex justify-between items-center">
           <span className="text-gray-600">Estimated Price:</span>
@@ -218,7 +217,7 @@ const CustomizationOptions = ({ product, onStartChat }) => {
         </p>
       </div>
 
-      {/* Action Button */}
+     // start customization chat button
       <button
         onClick={handleStartCustomization}
         className="w-full px-6 py-4 bg-gradient-to-r from-primary to-primary-dark text-white rounded-xl font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center justify-center space-x-2"

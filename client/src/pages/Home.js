@@ -13,11 +13,16 @@ import {
   FiUsers
 } from 'react-icons/fi';
 import axios from 'axios';
+import ProductCard from '../components/ProductCard'; // ADD THIS IMPORT
 
 const Home = () => {
   const [products, setProducts] = useState([]);
+  const [mostSold, setMostSold] = useState([]);
+  const [mostSearched, setMostSearched] = useState([]);
   const [artisans, setArtisans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [artisanCount, setArtisanCount] = useState(0);
+  const [dynamicCategories, setDynamicCategories] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -26,15 +31,45 @@ const Home = () => {
 
   const fetchData = async () => {
     try {
-      const [productsRes, artisansRes] = await Promise.all([
-        axios.get(`${process.env.REACT_APP_API_URL}/products?limit=6`),
-        axios.get(`${process.env.REACT_APP_API_URL}/artisans?limit=4`)
+      const [productsRes, artisansRes, countRes] = await Promise.all([
+        axios.get(`${process.env.REACT_APP_API_URL}/products?limit=200`),
+        axios.get(`${process.env.REACT_APP_API_URL}/artisans?limit=4`),
+        axios.get(`${process.env.REACT_APP_API_URL}/artisans?limit=1000`)
       ]);
-      setProducts(productsRes.data.products || []);
+      const prods = productsRes.data.products || [];
+      const sorted = [...prods].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setProducts(sorted.slice(0, 6));
+      // Most sold: sort by soldCount or ratings.count desc
+      const sold = [...prods].sort((a, b) => (b.soldCount || b.ratings?.count || 0) - (a.soldCount || a.ratings?.count || 0));
+      setMostSold(sold.slice(0, 6));
+      // Most searched: sort by views or ratings.average * ratings.count
+      const searched = [...prods].sort((a, b) => ((b.views || 0) + (b.ratings?.average || 0) * 10) - ((a.views || 0) + (a.ratings?.average || 0) * 10));
+      setMostSearched(searched.slice(0, 6));
       setArtisans(artisansRes.data.artisans || []);
-      setLoading(false);
+      const total = countRes.data.total || countRes.data.artisans?.length || 0;
+      setArtisanCount(total);
+
+      // Build dynamic categories from real products (most recently added)
+      const categoryMap = {};
+      // sort by newest first so first image encountered = most recent product's image
+      [...prods].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).forEach(p => {
+        const cat = (p.category || 'other').toLowerCase();
+        if (!categoryMap[cat]) {
+          categoryMap[cat] = {
+            name: cat.charAt(0).toUpperCase() + cat.slice(1),
+            image: p.images?.[0]?.url || `https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg`,
+            count: 0
+          };
+        }
+        categoryMap[cat].count += 1;
+      });
+      const cats = Object.values(categoryMap)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 4);
+      setDynamicCategories(cats);
     } catch (error) {
       console.error('Error fetching data:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -53,7 +88,7 @@ const Home = () => {
     {
       icon: <FiTruck className="h-6 w-6" />,
       title: 'Free Shipping',
-      description: 'Enjoy free shipping on all orders above ₹999'
+      description: 'Enjoy free shipping on all orders above Rs. 999'
     },
     {
       icon: <FiHeart className="h-6 w-6" />,
@@ -62,18 +97,18 @@ const Home = () => {
     }
   ];
 
-  const categories = [
-    { name: 'Pottery', image: 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg', count: '234 items' },
-    { name: 'Textiles', image: 'https://images.pexels.com/photos/17043766/pexels-photo-17043766.jpeg', count: '189 items' },
-    { name: 'Jewelry', image: 'https://images.pexels.com/photos/4741622/pexels-photo-4741622.jpeg', count: '156 items' },
-    { name: 'Woodwork', image: 'https://images.pexels.com/photos/31193512/pexels-photo-31193512.jpeg', count: '142 items' },
+  const staticCategories = [
+    { name: 'Pottery', image: 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg', count: 0 },
+    { name: 'Textiles', image: 'https://images.pexels.com/photos/17043766/pexels-photo-17043766.jpeg', count: 0 },
+    { name: 'Jewelry', image: 'https://images.pexels.com/photos/4741622/pexels-photo-4741622.jpeg', count: 0 },
+    { name: 'Woodwork', image: 'https://images.pexels.com/photos/31193512/pexels-photo-31193512.jpeg', count: 0 },
   ];
+  const categories = dynamicCategories.length > 0 ? dynamicCategories : staticCategories;
 
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
-        {/* Background Image with Overlay */}
         <div className="absolute inset-0">
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/40 z-10"></div>
           <img 
@@ -83,7 +118,6 @@ const Home = () => {
           />
         </div>
 
-        {/* Hero Content */}
         <div className="container mx-auto px-4 relative z-20">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -91,17 +125,17 @@ const Home = () => {
             transition={{ duration: 0.8 }}
             className="max-w-3xl"
           >
-            <br></br>
+            <br />
             <span className="inline-block px-2 py-2 bg-white/2 backdrop-blur-sm rounded-full text-white text-sm mt-6 border border-white/20">
               ✨ Handcrafted with Love
             </span>
             <h1 className="text-4xl md:text-6xl font-serif font-bold text-white mb-6 leading-tight">
               Discover the Art of 
-              <span className="bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent"> Traditional</span><br></br>
-              {' '}Craftsmanship
+              <span className="bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent"> Traditional</span><br />
+              Craftsmanship
             </h1>
             <p className="text-xl text-gray-200 mb-8 leading-relaxed">
-              Connect directly with India's finest artisans and bring home unique, 
+              Connect directly with Batticaloa finest artisans and bring home unique, 
               handcrafted treasures that tell a story.
             </p>
             
@@ -126,28 +160,9 @@ const Home = () => {
               </motion.button>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-8 mt-16">
-              {[
-                { value: '500+', label: 'Artisans' },
-                { value: '10k+', label: 'Products' },
-                { value: '50k+', label: 'Happy Customers' },
-              ].map((stat, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 + index * 0.1 }}
-                >
-                  <div className="text-3xl font-bold text-white">{stat.value}</div>
-                  <div className="text-sm text-gray-300">{stat.label}</div>
-                </motion.div>
-              ))}
-            </div>
           </motion.div>
         </div>
 
-        {/* Scroll Indicator */}
         <motion.div 
           animate={{ y: [0, 10, 0] }}
           transition={{ repeat: Infinity, duration: 1.5 }}
@@ -242,6 +257,50 @@ const Home = () => {
         </div>
       </section>
 
+      {/* Most Sold Products */}
+      {mostSold.length > 0 && (
+        <section className="py-20 bg-amber-50">
+          <div className="container mx-auto px-4">
+            <div className="flex justify-between items-center mb-10">
+              <div>
+                <span className="text-amber-600 font-semibold text-sm uppercase tracking-wider">Best Sellers</span>
+                <h2 className="text-3xl font-serif font-bold text-gray-900 mt-2">Most Sold</h2>
+              </div>
+              <button onClick={() => navigate('/products?sort=-soldCount')} className="text-amber-600 hover:text-amber-700 font-medium flex items-center space-x-1">
+                <span>See all</span><FiArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              {mostSold.map((product, index) => (
+                <ProductCard key={product._id} product={product} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Most Searched Products */}
+      {mostSearched.length > 0 && (
+        <section className="py-20 bg-white">
+          <div className="container mx-auto px-4">
+            <div className="flex justify-between items-center mb-10">
+              <div>
+                <span className="text-indigo-600 font-semibold text-sm uppercase tracking-wider">Trending</span>
+                <h2 className="text-3xl font-serif font-bold text-gray-900 mt-2">Most Popular</h2>
+              </div>
+              <button onClick={() => navigate('/products?sort=-views')} className="text-indigo-600 hover:text-indigo-700 font-medium flex items-center space-x-1">
+                <span>See all</span><FiArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              {mostSearched.map((product, index) => (
+                <ProductCard key={product._id} product={product} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Categories Section */}
       <section className="py-24 bg-white">
         <div className="container mx-auto px-4">
@@ -280,7 +339,7 @@ const Home = () => {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
                 <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
                   <h3 className="text-2xl font-serif font-bold mb-2">{category.name}</h3>
-                  <p className="text-sm text-white/80 mb-4">{category.count}</p>
+                  <p className="text-sm text-white/80 mb-4">{category.count > 0 ? `${category.count} items` : 'Shop now'}</p>
                   <span className="inline-flex items-center space-x-2 text-sm font-semibold group-hover:space-x-3 transition-all">
                     <span>Shop Now</span>
                     <FiArrowRight />
@@ -344,21 +403,19 @@ const Home = () => {
               <div className="relative rounded-3xl overflow-hidden shadow-2xl">
                 <img 
                   src="https://images.pexels.com/photos/8066090/pexels-photo-8066090.jpeg" 
-                  
                   alt="Artisan at work"
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
               </div>
               
-              {/* Stats Card */}
               <div className="absolute -bottom-6 -left-6 bg-white rounded-2xl shadow-xl p-6 max-w-xs">
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary-dark rounded-xl flex items-center justify-center">
                     <FiUsers className="h-6 w-6 text-white" />
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-gray-900">500+</div>
+                    <div className="text-2xl font-bold text-gray-900">{artisanCount > 0 ? artisanCount + '+' : '0'}</div>
                     <div className="text-sm text-gray-600">Skilled Artisans</div>
                   </div>
                 </div>
@@ -410,74 +467,6 @@ const Home = () => {
         </div>
       </section>
     </div>
-  );
-};
-
-// Product Card Component
-const ProductCard = ({ product, index }) => {
-  const navigate = useNavigate();
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.1 }}
-      viewport={{ once: true }}
-      whileHover={{ y: -8 }}
-      className="group bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden"
-    >
-      <div className="relative h-80 overflow-hidden">
-        <img
-          src={product.images?.[0]?.url || 'https://via.placeholder.com/600x800?text=Handcrafted+Item'}
-          alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-        
-        {/* Quick Actions */}
-        <div className="absolute top-4 right-4 flex flex-col space-y-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all">
-          <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-primary hover:text-white transition-colors">
-            <FiHeart className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Category Badge */}
-        {product.category && (
-          <span className="absolute bottom-4 left-4 px-4 py-2 bg-white/90 backdrop-blur-sm rounded-full text-xs font-semibold text-gray-900">
-            {product.category}
-          </span>
-        )}
-      </div>
-
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-gray-900 group-hover:text-primary transition-colors">
-            {product.name}
-          </h3>
-          <span className="text-sm text-gray-500">{product.artisan?.name}</span>
-        </div>
-        
-        <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-          {product.description}
-        </p>
-        
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-2xl font-bold text-primary">₹{product.price}</span>
-            {product.stock <= 5 && (
-              <p className="text-xs text-red-500 font-semibold mt-1">Only {product.stock} left</p>
-            )}
-          </div>
-          
-          <button
-            onClick={() => navigate(`/products/${product._id}`)}
-            className="px-5 py-2.5 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-full text-sm font-semibold transition-colors"
-          >
-            View Details
-          </button>
-        </div>
-      </div>
-    </motion.div>
   );
 };
 

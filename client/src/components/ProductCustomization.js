@@ -2,10 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  FiX, FiSend, FiUpload, FiImage, FiCheck, 
-  FiShoppingCart, FiMessageCircle, FiUser,
-  FiClock, FiPaperclip, FiDownload, FiStar,
-  FiPlus, FiMinus, FiTrash2, FiEye
+  FiX, FiSend, FiUpload, FiCheck, 
+  FiShoppingCart, FiMessageCircle,
+  FiClock, FiPaperclip,
+  FiPlus, FiMinus,
+  FiAlertCircle
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
@@ -15,19 +16,14 @@ import toast from 'react-hot-toast';
 
 const ProductCustomization = ({ product, isOpen, onClose }) => {
   const { user } = useAuth();
-  const { createRoom, joinRoom, sendMessage, messages, activeRoom, loadMessages } = useChat();
+  const { createRoom, joinRoom, sendMessage, loadMessages, socket } = useChat();
   const { addToCart } = useCart();
   
   const [step, setStep] = useState(1);
   const [customization, setCustomization] = useState({
-    options: [],
-    notes: '',
-    referenceImages: [],
+    notes: '', referenceImages: [],
     dimensions: { width: '', height: '', depth: '' },
-    color: '',
-    material: '',
-    quantity: 1,
-    deadline: ''
+    color: '', size: '', description: '', quantity: 1, deadline: ''
   });
   
   const [chatMessage, setChatMessage] = useState('');
@@ -36,998 +32,464 @@ const ProductCustomization = ({ product, isOpen, onClose }) => {
   const [price, setPrice] = useState(product?.price || 0);
   const [chatRoom, setChatRoom] = useState(null);
   const [chatHistory, setChatHistory] = useState([]);
-  const [artisanTyping, setArtisanTyping] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
-  const [customizationRequests, setCustomizationRequests] = useState([]);
-  const [activeRequest, setActiveRequest] = useState(null);
+  const [sendingRequest, setSendingRequest] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
   
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Scroll to bottom of chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, chatHistory]);
+  }, [chatHistory]);
 
-  // Initialize chat room with artisan
   useEffect(() => {
     if (isOpen && user && product) {
       const initChat = async () => {
         try {
-          const room = await createRoom(product.artisan?._id || product.artisan, product._id);
+          const artisanId = product.artisan?._id || product.artisan;
+          if (!artisanId) { toast.error('Artisan not found for this product'); return; }
+          const room = await createRoom(artisanId, product._id);
           if (room) {
             setChatRoom(room);
             joinRoom(room._id);
-            // Load previous messages
-            const history = await loadMessages(room._id);
-            setChatHistory(history || []);
+            const res = await loadMessages(room._id);
+            setChatHistory(res || []);
           }
         } catch (error) {
           console.error('Failed to initialize chat:', error);
-          toast.error('Could not connect to artisan');
         }
       };
       initChat();
     }
   }, [isOpen, user, product]);
 
-  // Calculate price based on customizations
   useEffect(() => {
-    let calculatedPrice = product?.price || 0;
-    
-    // Add customization option prices
-    if (product?.customizationOptions) {
-      product.customizationOptions.forEach(option => {
-        if (selectedOptions[option.name] && option.priceAdjustment) {
-          calculatedPrice += option.priceAdjustment;
+    if (!socket || !chatRoom) return;
+    const handleIncoming = ({ roomId, message, sender, timestamp }) => {
+      if (roomId !== chatRoom._id) return;
+      const newMsg = { message, sender, timestamp: timestamp || new Date() };
+      setChatHistory(prev => [...prev, newMsg]);
+      if (requestSent && sender !== user?._id) {
+        const lower = (message || '').toLowerCase();
+        if (lower.includes('confirm') || lower.includes('accept') || lower.includes('approved')) {
+          setStep(4);
+          toast.success('Artisan confirmed your customization!');
+        } else if (lower.includes('cancel') || lower.includes('decline') || lower.includes('reject') || lower.includes('unavailable')) {
+          setStep(5);
+          toast.error('Artisan cancelled your customization request');
         }
+      }
+    };
+    socket.on('receive-message', handleIncoming);
+    return () => socket.off('receive-message', handleIncoming);
+  }, [socket, chatRoom, requestSent, user]);
+
+  useEffect(() => {
+    let calc = product?.price || 0;
+    if (product?.customizationOptions) {
+      product.customizationOptions.forEach(opt => {
+        if (selectedOptions[opt.name] && opt.priceAdjustment) calc += opt.priceAdjustment;
       });
     }
-    
-    // Add material upcharge if selected
-    if (customization.material && product?.materials) {
-      const material = product.materials.find(m => m.name === customization.material);
-      if (material?.priceAdjustment) {
-        calculatedPrice += material.priceAdjustment;
-      }
-    }
-    
-    // Multiply by quantity
-    calculatedPrice *= customization.quantity;
-    
-    setPrice(calculatedPrice);
-  }, [selectedOptions, customization.quantity, customization.material, product]);
+    calc *= customization.quantity;
+    setPrice(calc);
+  }, [selectedOptions, customization.quantity, product]);
 
-  const handleOptionSelect = (optionName, value, priceAdjustment = 0) => {
-    setSelectedOptions(prev => ({
-      ...prev,
-      [optionName]: value
-    }));
-    
-    // Update customization object
-    setCustomization(prev => ({
-      ...prev,
-      options: [
-        ...prev.options.filter(opt => opt.name !== optionName),
-        { name: optionName, value, priceAdjustment }
-      ]
-    }));
+  const handleOptionSelect = (name, value) => {
+    setSelectedOptions(prev => ({ ...prev, [name]: value }));
   };
 
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-    
+    if (!files.length) return;
     setUploading(true);
-    
     try {
-      const uploadPromises = files.map(async (file) => {
-        const formData = new FormData();
-        formData.append('image', file);
-        
-        const response = await axios.post(
-          `${process.env.REACT_APP_API_URL}/upload`,
-          formData,
-          {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-              Authorization: `Bearer ${localStorage.getItem('token')}`
-            }
-          }
-        );
-        
-        return {
-          url: response.data.url,
-          publicId: response.data.publicId,
-          name: file.name,
-          size: file.size,
-          type: file.type
-        };
-      });
-      
-      const uploadedImages = await Promise.all(uploadPromises);
-      
-      setUploadedFiles(prev => [...prev, ...uploadedImages]);
-      setCustomization(prev => ({
-        ...prev,
-        referenceImages: [...prev.referenceImages, ...uploadedImages]
+      const uploads = await Promise.all(files.map(async (file) => {
+        const fd = new FormData();
+        fd.append('image', file);
+        const res = await axios.post(`${process.env.REACT_APP_API_URL}/upload`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        return { url: res.data.url, name: file.name };
       }));
-      
-      toast.success(`${uploadedImages.length} image(s) uploaded successfully`);
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast.error('Failed to upload images. Please try again.');
-    } finally {
-      setUploading(false);
-    }
+      setUploadedFiles(prev => [...prev, ...uploads]);
+      setCustomization(prev => ({ ...prev, referenceImages: [...prev.referenceImages, ...uploads] }));
+      toast.success(`${uploads.length} image(s) uploaded`);
+    } catch { toast.error('Failed to upload images'); }
+    finally { setUploading(false); }
   };
 
-  const removeImage = (index) => {
-    const newImages = [...uploadedFiles];
-    newImages.splice(index, 1);
-    setUploadedFiles(newImages);
-    
-    setCustomization(prev => ({
-      ...prev,
-      referenceImages: newImages
-    }));
-  };
-
-  const handleSendMessage = async () => {
-    if (!chatMessage.trim() && uploadedFiles.length === 0) return;
-    
-    let messageText = chatMessage;
-    
-    // If there are files, include them in the message
-    if (uploadedFiles.length > 0) {
-      const fileLinks = uploadedFiles.map(f => f.url).join('\n');
-      messageText = `${chatMessage}\n\n📎 Attachments:\n${fileLinks}`;
-      
-      // Clear uploaded files after sending
-      setUploadedFiles([]);
-    }
-    
-    try {
-      await sendMessage(messageText, chatRoom?._id);
-      setChatMessage('');
-      
-      // Simulate artisan typing (for demo)
-      setTimeout(() => {
-        setArtisanTyping(true);
-        setTimeout(() => {
-          setArtisanTyping(false);
-          // Auto-reply for demo (remove in production)
-          if (chatMessage.toLowerCase().includes('price')) {
-            const autoReply = {
-              sender: 'artisan',
-              message: `Based on your requirements, the estimated price would be around Rs${price}. Would you like to proceed?`,
-              timestamp: new Date()
-            };
-            setChatHistory(prev => [...prev, autoReply]);
-          }
-        }, 2000);
-      }, 1000);
-      
-    } catch (error) {
-      toast.error('Failed to send message');
-    }
+  const removeImage = (i) => {
+    const updated = uploadedFiles.filter((_, idx) => idx !== i);
+    setUploadedFiles(updated);
+    setCustomization(prev => ({ ...prev, referenceImages: updated }));
   };
 
   const handleSendCustomizationRequest = async () => {
-    // Validate required fields
-    const requiredOptions = product?.customizationOptions?.filter(opt => opt.required) || [];
-    const missingRequired = requiredOptions.filter(opt => !selectedOptions[opt.name]);
-    
-    if (missingRequired.length > 0) {
-      toast.error(`Please fill in: ${missingRequired.map(o => o.name).join(', ')}`);
-      return;
-    }
-    
-    // Create customization request
-    const requestDetails = {
-      productId: product._id,
-      productName: product.name,
-      options: selectedOptions,
-      dimensions: customization.dimensions,
-      notes: customization.notes,
-      quantity: customization.quantity,
-      estimatedPrice: price,
-      deadline: customization.deadline,
-      images: customization.referenceImages.map(img => img.url),
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    };
-    
-    // Send to artisan via chat
-    const message = `
-🎨 **NEW CUSTOMIZATION REQUEST**
-
-**Product:** ${product.name}
-**Quantity:** ${customization.quantity}
-**Estimated Budget:** Rs${price}
-
-**Selected Options:**
-${Object.entries(selectedOptions).map(([key, value]) => `- ${key}: ${value}`).join('\n')}
-
-${customization.dimensions.width ? `**Dimensions:** ${customization.dimensions.width} x ${customization.dimensions.height} x ${customization.dimensions.depth} cm` : ''}
-
-${customization.notes ? `**Notes:** ${customization.notes}` : ''}
-
-${customization.deadline ? `**Deadline:** ${new Date(customization.deadline).toLocaleDateString()}` : ''}
-
-${customization.referenceImages.length > 0 ? `**Reference Images:** ${customization.referenceImages.length} attached` : ''}
-
-Please review and let me know if you can accommodate this request.
-    `;
-    
+    setSendingRequest(true);
     try {
+      const parts = [
+        `🎨 CUSTOMIZATION REQUEST`,
+        `Product: ${product.name}`,
+        `Quantity: ${customization.quantity}`,
+        `Estimated Budget: Rs. ${price.toLocaleString()}`,
+      ];
+      if (customization.color) parts.push(`Color: ${customization.color}`);
+      if (customization.size) parts.push(`Size: ${customization.size}`);
+      if (customization.description) parts.push(`Description: ${customization.description}`);
+      Object.entries(selectedOptions).forEach(([k, v]) => parts.push(`${k}: ${v}`));
+      if (customization.dimensions.width) parts.push(`Dimensions: ${customization.dimensions.width}x${customization.dimensions.height}x${customization.dimensions.depth} cm`);
+      if (customization.notes) parts.push(`Notes: ${customization.notes}`);
+      if (customization.deadline) parts.push(`Deadline: ${new Date(customization.deadline).toLocaleDateString()}`);
+      parts.push(`\nPlease reply CONFIRM to accept or CANCEL if unavailable.`);
+      const message = parts.join('\n');
       await sendMessage(message, chatRoom?._id);
-      
-      // Save request locally
-      setCustomizationRequests(prev => [requestDetails, ...prev]);
-      setActiveRequest(requestDetails);
-      
-      toast.success('Customization request sent to artisan!');
-      setStep(2);
-    } catch (error) {
-      toast.error('Failed to send request');
-    }
+      setChatHistory(prev => [...prev, { message, sender: user?._id, timestamp: new Date() }]);
+      setRequestSent(true);
+      setStep(3);
+      toast.success('Customization request sent! Waiting for artisan response...');
+    } catch { toast.error('Failed to send request. Please try again.'); }
+    finally { setSendingRequest(false); }
   };
 
-  const handleAddToCart = () => {
-    const cartItem = {
-      ...product,
-      customization: {
-        ...customization,
-        selectedOptions,
-        finalPrice: price
-      },
-      quantity: customization.quantity
-    };
-    
-    addToCart(cartItem);
-    toast.success('Added to cart with customization!');
-    onClose();
+  const handleSendChatMessage = async () => {
+    if (!chatMessage.trim()) return;
+    try {
+      await sendMessage(chatMessage, chatRoom?._id);
+      setChatHistory(prev => [...prev, { message: chatMessage, sender: user?._id, timestamp: new Date() }]);
+      setChatMessage('');
+    } catch { toast.error('Failed to send message'); }
   };
 
-  const handleQuoteAccept = () => {
-    toast.success('Quote accepted! Proceeding to checkout...');
-    setStep(3);
-  };
-
-  const handleQuoteDecline = () => {
-    toast.error('Quote declined. You can continue negotiating.');
-    setStep(2);
+  const handleAddToCart = async () => {
+    try {
+      const customizationData = {
+        options: Object.entries(selectedOptions).map(([name, value]) => ({ name, value })),
+        notes: customization.notes, color: customization.color, size: customization.size,
+        description: customization.description, referenceImages: customization.referenceImages,
+        dimensions: customization.dimensions,
+        deadline: customization.deadline ? new Date(customization.deadline) : null
+      };
+      const success = await addToCart(product, customizationData, customization.quantity);
+      if (success) { toast.success('Custom order added to cart!'); onClose(); }
+      else toast.error('Failed to add to cart');
+    } catch (err) { toast.error(err.message || 'Error adding to cart'); }
   };
 
   if (!isOpen) return null;
 
+  const STEP_LABELS = ['Customize', 'Chat', 'Waiting', 'Order'];
+  const STEP_ICONS = ['🎨', '💬', '⏳', '✅'];
+
+  const ChatMessages = () => (
+    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50" style={{ minHeight: 200 }}>
+      {chatHistory.length === 0 && (
+        <div className="text-center py-8 text-gray-400">
+          <FiMessageCircle className="h-10 w-10 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No messages yet. Send your request!</p>
+        </div>
+      )}
+      {chatHistory.map((msg, i) => (
+        <div key={i} className={`flex ${msg.sender === user?._id ? 'justify-end' : 'justify-start'}`}>
+          <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${msg.sender === user?._id ? 'bg-primary text-white rounded-br-none' : 'bg-white text-gray-900 shadow-sm rounded-bl-none'}`}>
+            <p className="whitespace-pre-wrap">{msg.message}</p>
+            <span className={`text-xs mt-1 block ${msg.sender === user?._id ? 'text-white/70' : 'text-gray-400'}`}>
+              {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        </div>
+      ))}
+      <div ref={chatEndRef} />
+    </div>
+  );
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 overflow-hidden">
-        {/* Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-          onClick={onClose}
-        />
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-        {/* Modal */}
-        <motion.div
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
+        <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
           transition={{ type: 'tween', duration: 0.3 }}
-          className="absolute right-0 top-0 bottom-0 w-full max-w-5xl bg-white shadow-2xl flex flex-col"
-        >
+          className="absolute right-0 top-0 bottom-0 w-full max-w-4xl bg-white shadow-2xl flex flex-col">
+
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-primary/5 to-transparent">
+          <div className="flex items-center justify-between p-5 border-b bg-gradient-to-r from-primary/5 to-transparent">
             <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 rounded-xl overflow-hidden">
-                <img
-                  src={product.images?.[0]?.url || 'https://via.placeholder.com/100'}
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-14 h-14 rounded-xl overflow-hidden">
+                <img src={product.images?.[0]?.url || 'https://via.placeholder.com/100'} alt={product.name} className="w-full h-full object-cover" />
               </div>
               <div>
-                <h2 className="text-2xl font-serif font-bold text-gray-900">
-                  Customize Your Product
-                </h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  {product.name} by {product.artisan?.name || 'Artisan'}
-                </p>
+                <h2 className="text-xl font-serif font-bold text-gray-900">Customize Product</h2>
+                <p className="text-sm text-gray-600">{product.name} · by {product.artisan?.name || 'Artisan'}</p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <FiX className="h-6 w-6" />
-            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><FiX className="h-6 w-6" /></button>
           </div>
 
           {/* Progress Steps */}
-          <div className="px-6 py-4 bg-gray-50 border-b">
-            <div className="flex items-center justify-between max-w-3xl mx-auto">
-              {[
-                { number: 1, label: 'Customize', icon: '🎨' },
-                { number: 2, label: 'Chat with Artisan', icon: '💬' },
-                { number: 3, label: 'Review & Cart', icon: '🛒' }
-              ].map((s, index) => (
-                <div key={s.number} className="flex items-center">
-                  <div className="flex flex-col items-center">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
-                      step >= s.number 
-                        ? 'bg-primary text-white' 
-                        : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      {step > s.number ? <FiCheck className="h-5 w-5" /> : s.icon}
+          <div className="px-6 py-3 bg-gray-50 border-b">
+            <div className="flex items-center justify-between max-w-sm mx-auto">
+              {STEP_LABELS.map((label, i) => {
+                const sNum = i + 1;
+                const isActive = step >= sNum;
+                return (
+                  <div key={i} className="flex items-center">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium ${step === 5 && sNum === 4 ? 'bg-red-400 text-white' : isActive ? 'bg-primary text-white' : 'bg-gray-200 text-gray-500'}`}>
+                        {step > sNum ? <FiCheck className="h-4 w-4" /> : STEP_ICONS[i]}
+                      </div>
+                      <span className="text-xs mt-1 text-gray-500">{label}</span>
                     </div>
-                    <span className="text-xs mt-2 font-medium text-gray-600">{s.label}</span>
+                    {i < STEP_LABELS.length - 1 && (
+                      <div className={`w-12 h-1 mx-1 rounded-full mb-3 ${step > sNum ? 'bg-primary' : 'bg-gray-200'}`} />
+                    )}
                   </div>
-                  {index < 2 && (
-                    <div className={`w-24 h-1 mx-4 rounded-full ${
-                      step > s.number ? 'bg-primary' : 'bg-gray-200'
-                    }`} />
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto">
+
+            {/* STEP 1: Customize */}
             {step === 1 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-8"
-              >
-                {/* Quick Actions */}
-                <div className="grid grid-cols-4 gap-4">
-                  <button
-                    onClick={() => setStep(2)}
-                    className="p-4 bg-primary/5 rounded-xl hover:bg-primary/10 transition-colors text-center"
-                  >
-                    <FiMessageCircle className="h-6 w-6 mx-auto mb-2 text-primary" />
-                    <span className="text-xs font-medium">Chat with Artisan</span>
-                  </button>
-                  <button
-                    onClick={() => fileInputRef.current.click()}
-                    className="p-4 bg-primary/5 rounded-xl hover:bg-primary/10 transition-colors text-center"
-                  >
-                    <FiUpload className="h-6 w-6 mx-auto mb-2 text-primary" />
-                    <span className="text-xs font-medium">Upload Reference</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCustomization(prev => ({
-                        ...prev,
-                        quantity: prev.quantity + 1
-                      }));
-                    }}
-                    className="p-4 bg-primary/5 rounded-xl hover:bg-primary/10 transition-colors text-center"
-                  >
-                    <FiPlus className="h-6 w-6 mx-auto mb-2 text-primary" />
-                    <span className="text-xs font-medium">Increase Qty</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const today = new Date().toISOString().split('T')[0];
-                      setCustomization(prev => ({
-                        ...prev,
-                        deadline: today
-                      }));
-                    }}
-                    className="p-4 bg-primary/5 rounded-xl hover:bg-primary/10 transition-colors text-center"
-                  >
-                    <FiClock className="h-6 w-6 mx-auto mb-2 text-primary" />
-                    <span className="text-xs font-medium">Set Deadline</span>
-                  </button>
+              <div className="p-6 space-y-5">
+                <div className="bg-gray-50 rounded-xl p-5 space-y-4">
+                  <h3 className="font-semibold text-gray-900 flex items-center">
+                    <span className="w-1 h-5 bg-primary rounded-full mr-3"></span>Customization Details
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Color Preference</label>
+                      <input type="text" value={customization.color}
+                        onChange={e => setCustomization(p => ({ ...p, color: e.target.value }))}
+                        placeholder="e.g. Deep red, Navy blue"
+                        className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Size</label>
+                      <input type="text" value={customization.size}
+                        onChange={e => setCustomization(p => ({ ...p, size: e.target.value }))}
+                        placeholder="e.g. Small, 30x40cm"
+                        className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Custom Description</label>
+                    <textarea value={customization.description}
+                      onChange={e => setCustomization(p => ({ ...p, description: e.target.value }))}
+                      rows={3} placeholder="Describe what you want customized — design, patterns, engravings..."
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl resize-none focus:ring-2 focus:ring-primary focus:border-transparent" />
+                  </div>
                 </div>
 
-                {/* Customization Options */}
                 {product.customizationOptions?.length > 0 && (
-                  <div className="space-y-6">
-                    <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                      <span className="w-1 h-6 bg-primary rounded-full mr-3"></span>
-                      Customization Options
+                  <div className="bg-gray-50 rounded-xl p-5 space-y-4">
+                    <h3 className="font-semibold text-gray-900 flex items-center">
+                      <span className="w-1 h-5 bg-primary rounded-full mr-3"></span>Product Options
                     </h3>
-                    
-                    {product.customizationOptions.map((option, index) => (
-                      <div key={index} className="bg-gray-50 rounded-xl p-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <label className="font-medium text-gray-900">
-                            {option.name}
-                            {option.required && <span className="text-red-500 ml-1">*</span>}
-                          </label>
-                          {option.priceAdjustment > 0 && (
-                            <span className="text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full">
-                              +Rs{option.priceAdjustment}
-                            </span>
-                          )}
-                        </div>
-                        
-                        {option.type === 'color' && (
-                          <div className="flex flex-wrap gap-3">
-                            {option.options?.map((color, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => handleOptionSelect(option.name, color, option.priceAdjustment)}
-                                className={`w-12 h-12 rounded-full border-2 transition-all transform hover:scale-110 ${
-                                  selectedOptions[option.name] === color
-                                    ? 'border-primary ring-4 ring-primary/20 scale-110'
-                                    : 'border-gray-300 hover:border-primary'
-                                }`}
-                                style={{ backgroundColor: color }}
-                                title={color}
-                              />
+                    {product.customizationOptions.map((opt, i) => (
+                      <div key={i}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          {opt.name}{opt.required && <span className="text-red-500 ml-1">*</span>}
+                          {opt.priceAdjustment > 0 && <span className="text-green-600 ml-2 text-xs">+Rs. {opt.priceAdjustment}</span>}
+                        </label>
+                        {opt.type === 'color' && (
+                          <div className="flex flex-wrap gap-2">
+                            {opt.options?.map((c, j) => (
+                              <button key={j} onClick={() => handleOptionSelect(opt.name, c)}
+                                className={`w-9 h-9 rounded-full border-4 transition-all ${selectedOptions[opt.name] === c ? 'border-primary scale-110' : 'border-gray-300'}`}
+                                style={{ backgroundColor: c }} title={c} />
                             ))}
                           </div>
                         )}
-                        
-                        {option.type === 'size' && (
-                          <div className="flex flex-wrap gap-3">
-                            {option.options?.map((size, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => handleOptionSelect(option.name, size, option.priceAdjustment)}
-                                className={`px-6 py-3 border-2 rounded-xl text-sm font-medium transition-all ${
-                                  selectedOptions[option.name] === size
-                                    ? 'bg-primary text-white border-primary shadow-lg'
-                                    : 'border-gray-300 text-gray-700 hover:border-primary hover:bg-primary/5'
-                                }`}
-                              >
-                                {size}
+                        {opt.type === 'size' && (
+                          <div className="flex flex-wrap gap-2">
+                            {opt.options?.map((s, j) => (
+                              <button key={j} onClick={() => handleOptionSelect(opt.name, s)}
+                                className={`px-4 py-2 border-2 rounded-lg text-sm font-medium transition-all ${selectedOptions[opt.name] === s ? 'bg-primary text-white border-primary' : 'border-gray-300 hover:border-primary'}`}>
+                                {s}
                               </button>
                             ))}
                           </div>
                         )}
-                        
-                        {option.type === 'text' && (
-                          <input
-                            type="text"
-                            placeholder={`Enter ${option.name.toLowerCase()}`}
-                            value={selectedOptions[option.name] || ''}
-                            onChange={(e) => handleOptionSelect(option.name, e.target.value, option.priceAdjustment)}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
-                          />
-                        )}
-                        
-                        {option.type === 'material' && (
-                          <select
-                            value={selectedOptions[option.name] || ''}
-                            onChange={(e) => handleOptionSelect(option.name, e.target.value, option.priceAdjustment)}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary"
-                          >
-                            <option value="">Select {option.name}</option>
-                            {option.options?.map((material, idx) => (
-                              <option key={idx} value={material}>
-                                {material}
-                              </option>
-                            ))}
-                          </select>
+                        {(opt.type === 'text' || opt.type === 'material') && (
+                          <input type="text" value={selectedOptions[opt.name] || ''}
+                            onChange={e => handleOptionSelect(opt.name, e.target.value)}
+                            placeholder={`Enter ${opt.name.toLowerCase()}`}
+                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary" />
                         )}
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Dimensions */}
-                <div className="bg-gray-50 rounded-xl p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <span className="w-1 h-6 bg-primary rounded-full mr-3"></span>
-                    Dimensions (Optional)
+                <div className="bg-gray-50 rounded-xl p-5">
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                    <span className="w-1 h-5 bg-primary rounded-full mr-3"></span>Dimensions (Optional)
                   </h3>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-2">Width (cm)</label>
-                      <input
-                        type="number"
-                        value={customization.dimensions.width}
-                        onChange={(e) => setCustomization(prev => ({
-                          ...prev,
-                          dimensions: { ...prev.dimensions, width: e.target.value }
-                        }))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary"
-                        min="0"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-2">Height (cm)</label>
-                      <input
-                        type="number"
-                        value={customization.dimensions.height}
-                        onChange={(e) => setCustomization(prev => ({
-                          ...prev,
-                          dimensions: { ...prev.dimensions, height: e.target.value }
-                        }))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary"
-                        min="0"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-2">Depth (cm)</label>
-                      <input
-                        type="number"
-                        value={customization.dimensions.depth}
-                        onChange={(e) => setCustomization(prev => ({
-                          ...prev,
-                          dimensions: { ...prev.dimensions, depth: e.target.value }
-                        }))}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary"
-                        min="0"
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Reference Images */}
-                <div className="bg-gray-50 rounded-xl p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <span className="w-1 h-6 bg-primary rounded-full mr-3"></span>
-                    Reference Images
-                  </h3>
-                  
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    multiple
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={uploading}
-                  />
-                  
-                  <div className="grid grid-cols-6 gap-4">
-                    <button
-                      onClick={() => fileInputRef.current.click()}
-                      disabled={uploading}
-                      className="aspect-square border-2 border-dashed border-gray-300 rounded-xl hover:border-primary hover:bg-primary/5 transition-all flex flex-col items-center justify-center"
-                    >
-                      {uploading ? (
-                        <div className="animate-spin rounded-full h-8 w-8 border-3 border-primary border-t-transparent" />
-                      ) : (
-                        <>
-                          <FiUpload className="h-6 w-6 text-gray-400 mb-2" />
-                          <span className="text-xs text-gray-500">Upload</span>
-                        </>
-                      )}
-                    </button>
-                    
-                    {uploadedFiles.map((file, index) => (
-                      <div key={index} className="relative group aspect-square">
-                        <img
-                          src={file.url}
-                          alt={`Reference ${index + 1}`}
-                          className="w-full h-full rounded-xl object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
-                          <button
-                            onClick={() => window.open(file.url, '_blank')}
-                            className="p-2 bg-white rounded-lg hover:bg-gray-100"
-                          >
-                            <FiEye className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => removeImage(index)}
-                            className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-                          >
-                            <FiTrash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <span className="absolute bottom-1 left-1 text-xs text-white bg-black/50 px-2 py-1 rounded">
-                          {index + 1}
-                        </span>
+                  <div className="grid grid-cols-3 gap-3">
+                    {['width', 'height', 'depth'].map(dim => (
+                      <div key={dim}>
+                        <label className="block text-xs text-gray-500 mb-1 capitalize">{dim} (cm)</label>
+                        <input type="number" min="0" placeholder="0"
+                          value={customization.dimensions[dim]}
+                          onChange={e => setCustomization(p => ({ ...p, dimensions: { ...p.dimensions, [dim]: e.target.value } }))}
+                          className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary" />
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs text-gray-500 mt-4">
-                    Upload images showing similar styles, colors, or designs you like
-                  </p>
                 </div>
 
-                {/* Additional Notes */}
-                <div className="bg-gray-50 rounded-xl p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                    <span className="w-1 h-6 bg-primary rounded-full mr-3"></span>
-                    Additional Notes
+                <div className="bg-gray-50 rounded-xl p-5">
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                    <span className="w-1 h-5 bg-primary rounded-full mr-3"></span>Reference Images (Optional)
                   </h3>
-                  <textarea
-                    value={customization.notes}
-                    onChange={(e) => setCustomization(prev => ({
-                      ...prev,
-                      notes: e.target.value
-                    }))}
-                    rows="4"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl resize-none focus:ring-2 focus:ring-primary"
-                    placeholder="Describe your requirements in detail... 
-- Specific design elements you want
-- Color preferences
-- Any modifications to the original design
-- Questions for the artisan"
-                  />
+                  <input type="file" ref={fileInputRef} multiple accept="image/*" onChange={handleImageUpload} className="hidden" />
+                  <div className="flex flex-wrap gap-3">
+                    <button onClick={() => fileInputRef.current.click()} disabled={uploading}
+                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-xl hover:border-primary flex flex-col items-center justify-center transition-colors">
+                      {uploading ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" /> : <><FiUpload className="h-5 w-5 text-gray-400 mb-1" /><span className="text-xs text-gray-400">Upload</span></>}
+                    </button>
+                    {uploadedFiles.map((file, i) => (
+                      <div key={i} className="relative w-20 h-20 group">
+                        <img src={file.url} alt="" className="w-full h-full rounded-xl object-cover" />
+                        <button onClick={() => removeImage(i)} className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Quantity and Deadline */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="bg-gray-50 rounded-xl p-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Quantity
-                    </label>
-                    <div className="flex items-center justify-between bg-white rounded-xl border-2 border-gray-200 p-1">
-                      <button
-                        onClick={() => setCustomization(prev => ({
-                          ...prev,
-                          quantity: Math.max(1, prev.quantity - 1)
-                        }))}
-                        className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <FiMinus className="h-4 w-4" />
-                      </button>
-                      <span className="text-xl font-semibold w-16 text-center">
-                        {customization.quantity}
-                      </span>
-                      <button
-                        onClick={() => setCustomization(prev => ({
-                          ...prev,
-                          quantity: prev.quantity + 1
-                        }))}
-                        className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <FiPlus className="h-4 w-4" />
-                      </button>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                    <div className="flex items-center justify-between bg-white rounded-xl border-2 border-gray-200">
+                      <button onClick={() => setCustomization(p => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))}
+                        className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-l-lg"><FiMinus className="h-4 w-4" /></button>
+                      <span className="text-xl font-bold w-12 text-center">{customization.quantity}</span>
+                      <button onClick={() => setCustomization(p => ({ ...p, quantity: p.quantity + 1 }))}
+                        className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-r-lg"><FiPlus className="h-4 w-4" /></button>
                     </div>
                   </div>
-
-                  <div className="bg-gray-50 rounded-xl p-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Preferred Deadline (Optional)
-                    </label>
-                    <input
-                      type="date"
-                      value={customization.deadline}
-                      onChange={(e) => setCustomization(prev => ({
-                        ...prev,
-                        deadline: e.target.value
-                      }))}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary"
-                    />
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Preferred Deadline</label>
+                    <input type="date" value={customization.deadline} min={new Date().toISOString().split('T')[0]}
+                      onChange={e => setCustomization(p => ({ ...p, deadline: e.target.value }))}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>
-              </motion.div>
+
+                <div className="bg-gray-50 rounded-xl p-5">
+                  <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                    <span className="w-1 h-5 bg-primary rounded-full mr-3"></span>Additional Notes
+                  </h3>
+                  <textarea value={customization.notes}
+                    onChange={e => setCustomization(p => ({ ...p, notes: e.target.value }))}
+                    rows={3} placeholder="Any other special requirements..."
+                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl resize-none focus:ring-2 focus:ring-primary" />
+                </div>
+              </div>
             )}
 
+            {/* STEP 2: Chat */}
             {step === 2 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="h-full flex flex-col"
-              >
-                {/* Chat Header with Artisan Info */}
-                <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-primary/5 to-transparent rounded-t-xl">
-                  <div className="flex items-center space-x-4">
-                    <div className="relative">
-                      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white text-xl font-bold">
-                        {product.artisan?.name?.charAt(0) || 'A'}
-                      </div>
-                      <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 text-lg">
-                        {product.artisan?.name || 'Artisan'}
-                      </h3>
-                      <p className="text-sm text-gray-500 flex items-center">
-                        <FiClock className="h-3 w-3 mr-1" />
-                        Typically replies within 1 hour
-                      </p>
-                    </div>
+              <div className="flex flex-col" style={{ minHeight: 400 }}>
+                <div className="flex items-center space-x-3 p-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white text-lg font-bold">
+                    {product.artisan?.name?.charAt(0) || 'A'}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="flex items-center text-yellow-500">
-                      <FiStar className="h-4 w-4 fill-current" />
-                      <FiStar className="h-4 w-4 fill-current" />
-                      <FiStar className="h-4 w-4 fill-current" />
-                      <FiStar className="h-4 w-4 fill-current" />
-                      <FiStar className="h-4 w-4" />
-                      <span className="ml-2 text-gray-600">4.8</span>
-                    </span>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{product.artisan?.name || 'Artisan'}</h3>
+                    <p className="text-xs text-gray-500 flex items-center"><FiClock className="h-3 w-3 mr-1" />Typically replies within 1 hour</p>
                   </div>
                 </div>
-
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-                  {chatHistory.map((msg, index) => (
-                    <div
-                      key={index}
-                      className={`flex ${msg.sender === user?._id ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${
-                        msg.sender === user?._id
-                          ? 'bg-primary text-white rounded-br-none'
-                          : 'bg-white text-gray-900 shadow-sm rounded-bl-none'
-                      }`}>
-                        <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
-                        {msg.attachments?.length > 0 && (
-                          <div className="mt-2 flex space-x-2">
-                            {msg.attachments.map((att, i) => (
-                              <img
-                                key={i}
-                                src={att}
-                                alt="attachment"
-                                className="w-16 h-16 rounded-lg object-cover cursor-pointer hover:opacity-75"
-                                onClick={() => window.open(att, '_blank')}
-                              />
-                            ))}
-                          </div>
-                        )}
-                        <span className={`text-xs mt-2 block ${
-                          msg.sender === user?._id ? 'text-primary-light' : 'text-gray-500'
-                        }`}>
-                          {new Date(msg.timestamp).toLocaleTimeString([], { 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  {artisanTyping && (
-                    <div className="flex justify-start">
-                      <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div ref={chatEndRef} />
-                </div>
-
-                {/* Upload Preview */}
-                {uploadedFiles.length > 0 && (
-                  <div className="px-4 py-2 bg-gray-100 border-t flex space-x-2 overflow-x-auto">
-                    {uploadedFiles.map((file, index) => (
-                      <div key={index} className="relative flex-shrink-0">
-                        <img
-                          src={file.url}
-                          alt="preview"
-                          className="w-16 h-16 rounded-lg object-cover"
-                        />
-                        <button
-                          onClick={() => removeImage(index)}
-                          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Chat Input */}
+                <ChatMessages />
                 <div className="p-4 border-t bg-white">
                   <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => fileInputRef.current.click()}
-                      className="p-3 text-gray-500 hover:text-primary hover:bg-primary/10 rounded-xl transition-colors"
-                      title="Attach images"
-                    >
-                      <FiPaperclip className="h-5 w-5" />
-                    </button>
-                    <input
-                      type="text"
-                      value={chatMessage}
-                      onChange={(e) => setChatMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                      placeholder="Type your message..."
-                      className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
-                    />
-                    <button
-                      onClick={handleSendMessage}
-                      disabled={!chatMessage.trim() && uploadedFiles.length === 0}
-                      className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
+                    <input type="text" value={chatMessage} onChange={e => setChatMessage(e.target.value)}
+                      onKeyPress={e => e.key === 'Enter' && handleSendChatMessage()}
+                      placeholder="Type a message..."
+                      className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent" />
+                    <button onClick={handleSendChatMessage} disabled={!chatMessage.trim()}
+                      className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark disabled:opacity-50 transition-colors">
                       <FiSend className="h-5 w-5" />
                     </button>
                   </div>
-                  
-                  {/* Quick Replies */}
-                  <div className="flex mt-3 space-x-2 overflow-x-auto pb-1">
-                    {[
-                      'What\'s the estimated price?',
-                      'Can you do it by next week?',
-                      'I\'d like to see more samples',
-                      'Is this design possible?',
-                      'What materials do you recommend?'
-                    ].map((reply, index) => (
-                      <button
-                        key={index}
-                        onClick={() => setChatMessage(reply)}
-                        className="px-3 py-1.5 bg-gray-100 rounded-full text-xs whitespace-nowrap hover:bg-gray-200 transition-colors"
-                      >
-                        {reply}
-                      </button>
-                    ))}
-                  </div>
                 </div>
-
-                {/* Quote Actions (if quote received) */}
-                {activeRequest && (
-                  <div className="p-4 border-t bg-green-50">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-green-800">
-                          Quote Received: Rs{price}
-                        </p>
-                        <p className="text-xs text-green-600">
-                          Estimated delivery: 7-10 days
-                        </p>
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={handleQuoteDecline}
-                          className="px-4 py-2 border-2 border-red-500 text-red-500 rounded-xl hover:bg-red-50 text-sm font-medium"
-                        >
-                          Decline
-                        </button>
-                        <button
-                          onClick={handleQuoteAccept}
-                          className="px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 text-sm font-medium"
-                        >
-                          Accept Quote
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
+              </div>
             )}
 
+            {/* STEP 3: Waiting */}
             {step === 3 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="max-w-2xl mx-auto space-y-6"
-              >
-                <div className="text-center">
-                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <FiCheck className="h-10 w-10 text-green-600" />
+              <div className="flex flex-col" style={{ minHeight: 400 }}>
+                <div className="p-5 text-center border-b bg-amber-50">
+                  <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <FiClock className="h-7 w-7 text-amber-600 animate-pulse" />
                   </div>
-                  <h3 className="text-2xl font-serif font-bold text-gray-900 mb-2">
-                    Customization Ready!
-                  </h3>
-                  <p className="text-gray-600">
-                    Your custom design has been confirmed. Review the details below.
-                  </p>
+                  <h3 className="text-lg font-bold text-gray-900">Waiting for Artisan Response</h3>
+                  <p className="text-gray-600 text-sm mt-1">Your request has been sent. The artisan will confirm or cancel shortly.</p>
                 </div>
-
-                {/* Order Summary Card */}
-                <div className="bg-white rounded-2xl shadow-xl border-2 border-primary/20 overflow-hidden">
-                  <div className="bg-gradient-to-r from-primary to-primary-dark px-6 py-4">
-                    <h4 className="text-white font-semibold">Custom Order Summary</h4>
-                  </div>
-                  
-                  <div className="p-6 space-y-4">
-                    {/* Product Info */}
-                    <div className="flex items-center space-x-4 pb-4 border-b">
-                      <img
-                        src={product.images?.[0]?.url}
-                        alt={product.name}
-                        className="w-20 h-20 rounded-xl object-cover"
-                      />
-                      <div>
-                        <h5 className="font-semibold text-gray-900">{product.name}</h5>
-                        <p className="text-sm text-gray-600">by {product.artisan?.name}</p>
-                      </div>
-                    </div>
-
-                    {/* Customization Details */}
-                    <div className="space-y-3">
-                      <h6 className="font-medium text-gray-900">Customization Details:</h6>
-                      {Object.entries(selectedOptions).map(([key, value]) => (
-                        <div key={key} className="flex justify-between text-sm">
-                          <span className="text-gray-600">{key}:</span>
-                          <span className="font-medium text-gray-900">{value}</span>
-                        </div>
-                      ))}
-                      {customization.dimensions.width && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Dimensions:</span>
-                          <span className="font-medium text-gray-900">
-                            {customization.dimensions.width} x {customization.dimensions.height} x {customization.dimensions.depth} cm
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Quantity:</span>
-                        <span className="font-medium text-gray-900">{customization.quantity}</span>
-                      </div>
-                      {customization.deadline && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Deadline:</span>
-                          <span className="font-medium text-gray-900">
-                            {new Date(customization.deadline).toLocaleDateString()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Price Breakdown */}
-                    <div className="border-t pt-4 space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Base Price:</span>
-                        <span>Rs{product.price}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Customization:</span>
-                        <span className="text-green-600">+Rs{price - (product.price * customization.quantity)}</span>
-                      </div>
-                      <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                        <span>Total:</span>
-                        <span className="text-primary">Rs{price}</span>
-                      </div>
-                    </div>
-
-                    {/* Reference Images */}
-                    {customization.referenceImages.length > 0 && (
-                      <div className="border-t pt-4">
-                        <p className="text-sm font-medium text-gray-700 mb-3">Reference Images:</p>
-                        <div className="flex space-x-2">
-                          {customization.referenceImages.map((img, index) => (
-                            <img
-                              key={index}
-                              src={img.url}
-                              alt={`ref-${index}`}
-                              className="w-16 h-16 rounded-lg object-cover cursor-pointer hover:opacity-75"
-                              onClick={() => window.open(img.url, '_blank')}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Artisan Notes */}
-                    {customization.notes && (
-                      <div className="border-t pt-4">
-                        <p className="text-sm font-medium text-gray-700 mb-2">Your Notes:</p>
-                        <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                          {customization.notes}
-                        </p>
-                      </div>
-                    )}
+                <ChatMessages />
+                <div className="p-4 border-t bg-white">
+                  <div className="flex items-center space-x-2">
+                    <input type="text" value={chatMessage} onChange={e => setChatMessage(e.target.value)}
+                      onKeyPress={e => e.key === 'Enter' && handleSendChatMessage()}
+                      placeholder="Send a follow-up message..."
+                      className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary" />
+                    <button onClick={handleSendChatMessage} disabled={!chatMessage.trim()}
+                      className="p-3 bg-primary text-white rounded-xl hover:bg-primary-dark disabled:opacity-50">
+                      <FiSend className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
+              </div>
+            )}
 
-                {/* Action Buttons */}
-                <div className="flex space-x-4">
-                  <button
-                    onClick={() => setStep(2)}
-                    className="flex-1 px-6 py-3 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-medium flex items-center justify-center space-x-2"
-                  >
-                    <FiMessageCircle className="h-5 w-5" />
-                    <span>Back to Chat</span>
+            {/* STEP 4: Confirmed */}
+            {step === 4 && (
+              <div className="p-8 flex flex-col items-center justify-center" style={{ minHeight: 400 }}>
+                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                  <FiCheck className="h-10 w-10 text-green-600" />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center">Customization Confirmed!</h3>
+                <p className="text-gray-600 text-center mb-6">The artisan has confirmed your request. You can now place your order.</p>
+                <div className="w-full max-w-md bg-green-50 border border-green-200 rounded-2xl p-5 space-y-2 mb-6">
+                  <h4 className="font-semibold text-gray-900">Order Summary</h4>
+                  <div className="flex justify-between text-sm"><span className="text-gray-600">Product</span><span className="font-medium">{product.name}</span></div>
+                  {customization.color && <div className="flex justify-between text-sm"><span className="text-gray-600">Color</span><span className="font-medium">{customization.color}</span></div>}
+                  {customization.size && <div className="flex justify-between text-sm"><span className="text-gray-600">Size</span><span className="font-medium">{customization.size}</span></div>}
+                  <div className="flex justify-between text-sm"><span className="text-gray-600">Quantity</span><span className="font-medium">{customization.quantity}</span></div>
+                  <div className="flex justify-between text-sm border-t pt-2 font-bold"><span>Total</span><span className="text-primary">Rs. {price.toLocaleString()}</span></div>
+                </div>
+                <button onClick={handleAddToCart}
+                  className="w-full max-w-md px-6 py-4 bg-primary text-white rounded-xl hover:bg-primary-dark font-semibold flex items-center justify-center space-x-2 transition-all">
+                  <FiShoppingCart className="h-5 w-5" /><span>Add to Cart & Order</span>
+                </button>
+              </div>
+            )}
+
+            {/* STEP 5: Cancelled */}
+            {step === 5 && (
+              <div className="p-8 flex flex-col items-center justify-center" style={{ minHeight: 400 }}>
+                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                  <FiAlertCircle className="h-10 w-10 text-red-500" />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center">Customization Unavailable</h3>
+                <p className="text-gray-600 text-center mb-6">The artisan has cancelled your request. Please try another product or contact a different artisan.</p>
+                <div className="flex space-x-4 w-full max-w-md">
+                  <button onClick={() => { setStep(1); setRequestSent(false); }}
+                    className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium">
+                    Try Again
                   </button>
-                  <button
-                    onClick={handleAddToCart}
-                    className="flex-1 px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary-dark font-medium flex items-center justify-center space-x-2"
-                  >
-                    <FiShoppingCart className="h-5 w-5" />
-                    <span>Add to Cart</span>
+                  <button onClick={onClose}
+                    className="flex-1 px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary-dark font-semibold">
+                    Browse Other Products
                   </button>
                 </div>
-              </motion.div>
+              </div>
             )}
           </div>
 
@@ -1035,34 +497,33 @@ Please review and let me know if you can accommodate this request.
           <div className="border-t p-4 bg-gray-50">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Estimated Total</p>
-                <p className="text-2xl font-bold text-primary">Rs{price.toLocaleString()}</p>
+                <p className="text-xs text-gray-500">Estimated Total</p>
+                <p className="text-2xl font-bold text-primary">Rs. {price.toLocaleString()}</p>
               </div>
               <div className="flex space-x-3">
                 {step === 1 && (
                   <>
-                    <button
-                      onClick={onClose}
-                      className="px-6 py-3 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-medium"
-                    >
-                      Cancel
+                    <button onClick={onClose} className="px-5 py-2.5 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-medium">Cancel</button>
+                    <button onClick={() => setStep(2)} className="px-5 py-2.5 border-2 border-primary text-primary rounded-xl hover:bg-primary/5 font-medium flex items-center space-x-1">
+                      <FiMessageCircle className="h-4 w-4" /><span>Chat First</span>
                     </button>
-                    <button
-                      onClick={handleSendCustomizationRequest}
-                      className="px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary-dark font-medium flex items-center space-x-2"
-                    >
-                      <FiMessageCircle className="h-5 w-5" />
-                      <span>Send to Artisan</span>
+                    <button onClick={handleSendCustomizationRequest} disabled={sendingRequest}
+                      className="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark font-medium flex items-center space-x-1 disabled:opacity-50">
+                      {sendingRequest ? <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-1" /><span>Sending...</span></> : <><FiSend className="h-4 w-4" /><span>Send to Artisan</span></>}
                     </button>
                   </>
                 )}
                 {step === 2 && (
-                  <button
-                    onClick={() => setStep(3)}
-                    className="px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary-dark font-medium"
-                  >
-                    Continue to Review
-                  </button>
+                  <>
+                    <button onClick={() => setStep(1)} className="px-5 py-2.5 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-medium">← Back</button>
+                    <button onClick={handleSendCustomizationRequest} disabled={sendingRequest}
+                      className="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark font-medium flex items-center space-x-1 disabled:opacity-50">
+                      {sendingRequest ? <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-1" /><span>Sending...</span></> : <><FiSend className="h-4 w-4" /><span>Send Request</span></>}
+                    </button>
+                  </>
+                )}
+                {step === 3 && (
+                  <button onClick={() => setStep(2)} className="px-5 py-2.5 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-medium">← Back to Chat</button>
                 )}
               </div>
             </div>

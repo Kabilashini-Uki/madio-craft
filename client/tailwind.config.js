@@ -7,8 +7,8 @@ module.exports = {
     extend: {
       colors: {
         primary: {
-          dark: '#5D4037',
           DEFAULT: '#8B4513',
+          dark: '#5D4037',
           light: '#D7CCC8',
         },
         background: '#FAF3E0',
@@ -16,7 +16,7 @@ module.exports = {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
-        serif: ['Playfair Display', 'serif'],
+        serif: ['"Playfair Display"', 'serif'],
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',

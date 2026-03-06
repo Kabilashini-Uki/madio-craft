@@ -1,7 +1,7 @@
 // pages/Artisans.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FiMapPin, 
   FiStar, 
@@ -12,151 +12,159 @@ import {
   FiChevronRight,
   FiHeart,
   FiMail,
-  FiShield
+  FiTool,
+  FiShield,
+  FiArrowRight,
+  FiPackage,
+  FiX,
+  FiClock,
+  FiSend
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useSecureChat } from '../context/SecureChatContext';
 
 const Artisans = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { createCustomizationRoom } = useSecureChat();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedLocation, setSelectedLocation] = useState('all');
+  const [artisans, setArtisans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Modal state
+  const [selectedArtisan, setSelectedArtisan] = useState(null);
+  const [showArtisanModal, setShowArtisanModal] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
 
-  const artisans = [
-    {
-      id: 1,
-      _id: '1',
-      name: 'Priya Sharma',
-      business: 'Clay Creations',
-      specialty: 'pottery',
-      location: 'Jaipur, Rajasthan',
-      rating: 4.8,
-      reviews: 128,
-      experience: '8 years',
-      description: 'Specializing in traditional Indian pottery with modern designs. Her work blends centuries-old techniques with contemporary aesthetics.',
-      image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-      coverImage: 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg',
-      products: 45,
-      followers: 2300,
-      verified: true,
-      awards: ['National Craft Award 2023', 'Jaipur Heritage Award']
-    },
-    {
-      id: 2,
-      _id: '2',
-      name: 'Raj Kumar',
-      business: 'Wood Wonders',
-      specialty: 'woodwork',
-      location: 'Chennai, Tamil Nadu',
-      rating: 4.9,
-      reviews: 215,
-      experience: '12 years',
-      description: 'Master craftsman creating intricate wooden carvings and furniture. His family has been in this craft for over 50 years.',
-      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-      coverImage: 'https://images.pexels.com/photos/31193512/pexels-photo-31193512.jpeg',
-      products: 78,
-      followers: 5600,
-      verified: true,
-      awards: ['Woodcraft Excellence Award', 'Southern Craft Biennale']
-    },
-    {
-      id: 3,
-      _id: '3',
-      name: 'Ananya Patel',
-      business: 'Silver Symphony',
-      specialty: 'jewelry',
-      location: 'Ahmedabad, Gujarat',
-      rating: 4.7,
-      reviews: 189,
-      experience: '6 years',
-      description: 'Handcrafted silver jewelry with traditional Gujarati motifs. Each piece tells a story of heritage and artistry.',
-      image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
-      coverImage: 'https://images.pexels.com/photos/4741622/pexels-photo-4741622.jpeg',
-      products: 112,
-      followers: 8900,
-      verified: true,
-      awards: ['Emerging Artisan Award 2024']
-    },
-    {
-      id: 4,
-      _id: '4',
-      name: 'Suresh Reddy',
-      business: 'Metal Masters',
-      specialty: 'metalwork',
-      location: 'Hyderabad, Telangana',
-      rating: 4.6,
-      reviews: 142,
-      experience: '15 years',
-      description: 'Expert in brass and copper metal crafting. Known for his intricate Bidri work and contemporary designs.',
-      image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400',
-      coverImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSGEzQe0I3xuy7yG6K4K6sXQVK5N6rycfAi0A&s',
-      products: 67,
-      followers: 3400,
-      verified: true,
-      awards: ['Metal Craft Excellence Award']
-    },
-    {
-      id: 5,
-      _id: '5',
-      name: 'Meera Singh',
-      business: 'Textile Tales',
-      specialty: 'textiles',
-      location: 'Varanasi, Uttar Pradesh',
-      rating: 4.9,
-      reviews: 256,
-      experience: '20 years',
-      description: 'Handloom textiles and Banarasi silk expert. Reviving ancient weaving techniques with modern applications.',
-      image: 'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?w=400',
-      coverImage: 'https://images.pexels.com/photos/17043766/pexels-photo-17043766.jpeg',
-      products: 156,
-      followers: 12700,
-      verified: true,
-      awards: ['Padma Shri Nominee', 'Handloom Excellence Award']
-    },
-    {
-      id: 6,
-      _id: '6',
-      name: 'Arjun Nair',
-      business: 'Glass Gallery',
-      specialty: 'glass',
-      location: 'Firozabad, Uttar Pradesh',
-      rating: 4.5,
-      reviews: 98,
-      experience: '10 years',
-      description: 'Creating beautiful glass artifacts and decorations. Specializes in stained glass and contemporary glass sculptures.',
-      image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400',
-      coverImage: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTbt4_gHLnnBkLZfLBi2iu9NyP7PFM3--Z2kA&s',
-      products: 34,
-      followers: 1800,
-      verified: false,
-      awards: []
-    },
-  ];
+  const [modalProducts, setModalProducts] = useState([]);
+  const [loadingModalProducts, setLoadingModalProducts] = useState(false);
+  const [showCustomizationChat, setShowCustomizationChat] = useState(false);
+  const [customizationMsg, setCustomizationMsg] = useState('');
+  const [sendingCustomMsg, setSendingCustomMsg] = useState(false);
+  const [customChatHistory, setCustomChatHistory] = useState([]);
+  const [customChatRoom, setCustomChatRoom] = useState(null);
 
-  const handleViewShop = (artisanId) => {
-    navigate(`/artisans/${artisanId}`);
+  // Fetch artisans
+  useEffect(() => {
+    let mounted = true;
+    const fetchArtisans = async () => {
+      try {
+        setLoading(true);
+        const params = { page: 1, limit: 100 };
+        if (searchTerm) params.search = searchTerm;
+        
+        const res = await api.get('/artisans', { params });
+        if (!mounted) return;
+        
+        setArtisans(res.data.artisans || []);
+      } catch (error) {
+        console.error('Failed to load artisans', error);
+        toast.error('Failed to load artisans');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    fetchArtisans();
+    return () => { mounted = false; };
+  }, [searchTerm]);
+
+  const handleViewArtisan = async (artisan) => {
+    setSelectedArtisan(artisan);
+    setShowArtisanModal(true);
+    setShowCustomizationChat(false);
+    setCustomChatHistory([]);
+    setCustomChatRoom(null);
+    // Fetch this artisan's products
+    setLoadingModalProducts(true);
+    try {
+      const res = await api.get(`/products?artisan=${artisan._id}&limit=6`);
+      setModalProducts(res.data.products || []);
+    } catch { setModalProducts([]); }
+    finally { setLoadingModalProducts(false); }
   };
 
-  const handleContact = (artisanId) => {
-    if (!localStorage.getItem('token')) {
+  const handleContact = async (artisanId) => {
+    if (!user) {
       toast.error('Please login to contact artisans');
       navigate('/login');
       return;
     }
-    navigate(`/chat/${artisanId}`);
+
+    setModalLoading(true);
+    try {
+      const room = await createCustomizationRoom(
+        artisanId,
+        null,
+        { type: 'inquiry', message: 'Initial contact from artisans page' }
+      );
+      
+      if (room) {
+        toast.success('Chat room created!');
+        navigate(`/chat/${room._id}`);
+        setShowArtisanModal(false);
+      }
+    } catch (error) {
+      console.error('Failed to create room:', error);
+      toast.error('Failed to start chat. Please try again.');
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleOpenCustomizationChat = async () => {
+    if (!user) { toast.error('Please login to chat'); navigate('/login'); return; }
+    setShowCustomizationChat(true);
+    if (!customChatRoom && selectedArtisan) {
+      setModalLoading(true);
+      try {
+        const room = await createCustomizationRoom(
+          selectedArtisan._id, null,
+          { type: 'inquiry', message: 'Starting customization chat' }
+        );
+        if (room) { setCustomChatRoom(room); toast.success('Chat ready!'); }
+      } catch { toast.error('Could not start chat'); }
+      finally { setModalLoading(false); }
+    }
+  };
+
+  const handleSendCustomizationMsg = async () => {
+    if (!customizationMsg.trim()) return;
+    setSendingCustomMsg(true);
+    try {
+      const endpoint = customChatRoom ? `/chat/rooms/${customChatRoom._id}/messages` : '/chat/rooms';
+      const payload = customChatRoom 
+        ? { message: customizationMsg }
+        : { artisanId: selectedArtisan._id, initialMessage: customizationMsg };
+      const res = await api.post(endpoint, payload);
+      if (res.data.success || res.data.room || res.data.message) {
+        const room = res.data.room;
+        if (room && !customChatRoom) setCustomChatRoom(room);
+        setCustomChatHistory(prev => [...prev, { message: customizationMsg, sender: user?._id, timestamp: new Date() }]);
+        setCustomizationMsg('');
+        toast.success('Message sent to artisan!');
+      }
+    } catch { toast.error('Failed to send message'); }
+    finally { setSendingCustomMsg(false); }
   };
 
   const categories = ['all', 'pottery', 'woodwork', 'jewelry', 'metalwork', 'textiles', 'glass'];
-  const locations = ['all', 'Rajasthan', 'Tamil Nadu', 'Gujarat', 'Telangana', 'Uttar Pradesh'];
+  const locations = ['all', 'Eravur', 'Marudhamunai', 'Valaichenai', 'Ottamavadi', 'Kaatankudy'];
 
+  // Filter artisans
   const filteredArtisans = artisans.filter(artisan => {
-    const matchesSearch = artisan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         artisan.business.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         artisan.specialty.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         artisan.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || artisan.specialty.toLowerCase() === selectedCategory;
-    const matchesLocation = selectedLocation === 'all' || artisan.location.includes(selectedLocation);
-    return matchesSearch && matchesCategory && matchesLocation;
+    const matchesCategory = selectedCategory === 'all' || 
+      (artisan.craftCategory || '').toLowerCase() === selectedCategory.toLowerCase() ||
+      (artisan.specialties && artisan.specialties.some(s => s.toLowerCase().includes(selectedCategory.toLowerCase())));
+    
+    const matchesLocation = selectedLocation === 'all' || 
+      (artisan.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
+    
+    return matchesCategory && matchesLocation;
   });
 
   return (
@@ -164,8 +172,7 @@ const Artisans = () => {
       {/* Hero Section */}
       <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden">
         <div className="absolute inset-0">
-          <div className="absolute top-0 left-0 w-full h-full bg-[url('https://media.istockphoto.com/id/2157382378/photo/group-of-diverse-people-stacking-hands-in-the-middle.jpg?s=612x612&w=0&k=20&c=-XuqsHcI8nMAXOYAaZzdPsHZeOttDzitvnqX2b4VD-I=')] bg-cover bg-center opacity-10"></div>
-          <div className="absolute inset-0 bg-gradient-to-r from-black/10 to-black/5"></div>
+          <div className="absolute top-0 left-0 w-full h-full bg-[url('https://media.istockphoto.com/id/2157382378/photo/group-of-diverse-people-stacking-hands-in-the-middle.jpg')] bg-cover bg-center opacity-10"></div>
         </div>
         
         <div className="container mx-auto px-4 py-20 relative z-10">
@@ -180,7 +187,7 @@ const Artisans = () => {
             </span>
             <h1 className="text-5xl md:text-6xl font-serif font-bold mb-6 leading-tight">
               Master Artisans of 
-              <span className="bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent"> SriLanka</span>
+              <span className="bg-gradient-to-r from-amber-400 to-amber-600 bg-clip-text text-transparent"> Sri Lanka</span>
             </h1>
             <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto leading-relaxed">
               Connect directly with skilled craftspeople who pour their heart and heritage into every creation.
@@ -195,39 +202,11 @@ const Artisans = () => {
                   placeholder="Search artisans by name, craft, or location..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-14 pr-6 py-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-lg"
+                  className="w-full pl-14 pr-6 py-5 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg"
                 />
               </div>
             </div>
           </motion.div>
-        </div>
-
-        {/* Stats Bar */}
-        <div className="border-t border-white/10 bg-black/20 backdrop-blur-sm">
-          <div className="container mx-auto px-4 py-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              {[
-                { value: '500+', label: 'Active Artisans', icon: <FiUsers /> },
-                { value: '25+', label: 'Craft Categories', icon: <FiAward /> },
-                { value: '50k+', label: 'Products Made', icon: <FiHeart /> },
-                { value: '4.8', label: 'Average Rating', icon: <FiStar /> },
-              ].map((stat, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 + index * 0.1 }}
-                  className="text-center"
-                >
-                  <div className="text-2xl md:text-3xl font-bold text-white mb-1">{stat.value}</div>
-                  <div className="text-sm text-gray-400 flex items-center justify-center">
-                    <span className="mr-2">{stat.icon}</span>
-                    {stat.label}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -253,7 +232,7 @@ const Artisans = () => {
                     onClick={() => setSelectedCategory(category)}
                     className={`px-5 py-2.5 rounded-full text-sm font-medium capitalize transition-all ${
                       selectedCategory === category
-                        ? 'bg-gradient-to-r from-primary to-primary-dark text-white shadow-lg'
+                        ? 'bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-lg'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
@@ -276,7 +255,7 @@ const Artisans = () => {
                     onClick={() => setSelectedLocation(location)}
                     className={`px-5 py-2.5 rounded-full text-sm font-medium capitalize transition-all ${
                       selectedLocation === location
-                        ? 'bg-gradient-to-r from-primary to-primary-dark text-white shadow-lg'
+                        ? 'bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-lg'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
@@ -293,16 +272,14 @@ const Artisans = () => {
           <p className="text-gray-600">
             <span className="font-semibold text-gray-900 text-lg">{filteredArtisans.length}</span> artisans found
           </p>
-          <select className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-primary focus:border-transparent">
-            <option>Most Popular</option>
-            <option>Highest Rated</option>
-            <option>Most Products</option>
-            <option>Newest</option>
-          </select>
         </div>
 
         {/* Artisans Grid */}
-        {filteredArtisans.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-amber-600 border-t-transparent"></div>
+          </div>
+        ) : filteredArtisans.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -317,7 +294,7 @@ const Artisans = () => {
                 setSelectedCategory('all');
                 setSelectedLocation('all');
               }}
-              className="px-6 py-3 bg-primary text-white rounded-full hover:bg-primary-dark transition-colors"
+              className="px-6 py-3 bg-amber-600 text-white rounded-full hover:bg-amber-700 transition-colors"
             >
               Clear All Filters
             </button>
@@ -326,7 +303,7 @@ const Artisans = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredArtisans.map((artisan, index) => (
               <motion.div
-                key={artisan.id}
+                key={artisan._id || index}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
@@ -334,10 +311,10 @@ const Artisans = () => {
                 className="group bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden"
               >
                 {/* Cover Image */}
-                <div className="relative h-48 overflow-hidden">
+                <div className="relative h-40 overflow-hidden">
                   <img
-                    src={artisan.coverImage}
-                    alt={artisan.business}
+                    src={artisan.coverImage || 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg'}
+                    alt={artisan.businessName}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
@@ -345,14 +322,14 @@ const Artisans = () => {
                   {/* Profile Image */}
                   <div className="absolute -bottom-12 left-6">
                     <div className="relative">
-                      <div className="w-24 h-24 rounded-2xl border-4 border-white overflow-hidden shadow-xl">
+                      <div className="w-24 h-24 rounded-2xl border-4 border-white overflow-hidden shadow-xl bg-white">
                         <img
-                          src={artisan.image}
+                          src={artisan.profileImage || artisan.avatar?.url || `https://ui-avatars.com/api/?name=${artisan.name}&background=8B4513&color=fff&size=128`}
                           alt={artisan.name}
                           className="w-full h-full object-cover"
                         />
                       </div>
-                      {artisan.verified && (
+                      {artisan.isVerified && (
                         <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center border-2 border-white">
                           <FiShield className="h-3 w-3 text-white" />
                         </div>
@@ -360,9 +337,9 @@ const Artisans = () => {
                     </div>
                   </div>
 
-                  {/* Specialty Badge */}
-                  <span className="absolute top-4 right-4 px-4 py-2 bg-white/90 backdrop-blur-sm rounded-full text-xs font-semibold text-gray-900 shadow-lg">
-                    {artisan.specialty}
+                  {/* Category Badge */}
+                  <span className="absolute top-4 right-4 px-4 py-2 bg-white/90 backdrop-blur-sm rounded-full text-xs font-semibold text-gray-900 shadow-lg capitalize">
+                    {artisan.craftCategory || 'Artisan'}
                   </span>
                 </div>
 
@@ -370,10 +347,10 @@ const Artisans = () => {
                 <div className="pt-16 p-6">
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-1 group-hover:text-primary transition-colors">
+                      <h3 className="text-xl font-bold text-gray-900 mb-1 group-hover:text-amber-700 transition-colors">
                         {artisan.name}
                       </h3>
-                      <p className="text-primary font-medium">{artisan.business}</p>
+                      <p className="text-amber-700 font-medium">{artisan.businessName}</p>
                     </div>
                     <button className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                       <FiHeart className="h-5 w-5" />
@@ -381,65 +358,64 @@ const Artisans = () => {
                   </div>
 
                   <p className="text-gray-600 text-sm mb-6 line-clamp-2">
-                    {artisan.description}
+                    {artisan.bio || artisan.description || 'Skilled artisan creating beautiful handcrafted products.'}
                   </p>
 
                   {/* Details Grid */}
                   <div className="grid grid-cols-2 gap-4 mb-6">
                     <div className="flex items-center text-gray-600">
                       <FiMapPin className="h-4 w-4 mr-2 text-gray-400" />
-                      <span className="text-sm">{artisan.location.split(',')[0]}</span>
+                      <span className="text-sm font-medium">{artisan.location || 'Location not set'}</span>
                     </div>
                     <div className="flex items-center text-gray-600">
                       <FiAward className="h-4 w-4 mr-2 text-gray-400" />
-                      <span className="text-sm">{artisan.experience}</span>
+                      <span className="text-sm">{artisan.experience || 0} years</span>
                     </div>
                     <div className="flex items-center text-gray-600">
                       <FiStar className="h-4 w-4 mr-2 text-yellow-400" />
-                      <span className="text-sm font-semibold">{artisan.rating}</span>
-                      <span className="text-xs text-gray-500 ml-1">({artisan.reviews})</span>
+                      <span className="text-sm font-semibold">{artisan.rating || 0}</span>
+                      <span className="text-xs text-gray-500 ml-1">({artisan.reviewCount || 0})</span>
                     </div>
                     <div className="flex items-center text-gray-600">
-                      <FiUsers className="h-4 w-4 mr-2 text-gray-400" />
-                      <span className="text-sm">{artisan.followers.toLocaleString()} followers</span>
+                      <FiPackage className="h-4 w-4 mr-2 text-gray-400" />
+                      <span className="text-sm">{artisan.productCount || 0} products</span>
                     </div>
                   </div>
 
-                  {/* Awards */}
-                  {artisan.awards.length > 0 && (
+                  {/* Specialties */}
+                  {artisan.specialties && artisan.specialties.length > 0 && (
                     <div className="mb-6">
                       <div className="flex flex-wrap gap-2">
-                        {artisan.awards.map((award, idx) => (
+                        {artisan.specialties.slice(0, 3).map((specialty, idx) => (
                           <span
                             key={idx}
-                            className="px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-xs font-medium"
+                            className="px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium"
                           >
-                            🏆 {award}
+                            {specialty}
                           </span>
                         ))}
+                        {artisan.specialties.length > 3 && (
+                          <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                            +{artisan.specialties.length - 3}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
 
-                  {/* Stats & Actions */}
+                  {/* Actions */}
                   <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                    <div>
-                      <span className="text-sm text-gray-500">Products</span>
-                      <p className="text-lg font-bold text-gray-900">{artisan.products}+</p>
+                    <div className="flex items-center text-gray-500">
+                      <FiUsers className="h-4 w-4 mr-1" />
+                      <span className="text-sm">{(artisan.followerCount || 0).toLocaleString()} followers</span>
                     </div>
                     
                     <div className="flex space-x-2">
-                      <button 
-                        onClick={() => handleContact(artisan._id)}
-                        className="p-3 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-xl transition-colors"
-                      >
-                        <FiMail className="h-5 w-5" />
-                      </button>
                       <button
-                        onClick={() => handleViewShop(artisan._id)}
-                        className="px-5 py-3 bg-gradient-to-r from-primary to-primary-dark text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center space-x-2"
+                        onClick={() => handleViewArtisan(artisan)}
+                        className="px-5 py-3 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center space-x-2"
                       >
-                        <span>View Shop</span>
+                        <span>View Details</span>
                         <FiChevronRight className="h-4 w-4" />
                       </button>
                     </div>
@@ -449,7 +425,270 @@ const Artisans = () => {
             ))}
           </div>
         )}
+
+        {/* View All Artisans Button */}
+        {filteredArtisans.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center mt-12"
+          >
+            <button
+              onClick={() => navigate('/artisans/all')}
+              className="group px-8 py-4 bg-amber-600 text-white rounded-full font-semibold hover:bg-amber-700 transition-all inline-flex items-center space-x-2"
+            >
+              <span>View All Artisans</span>
+              <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
+            </button>
+            <p className="text-sm text-gray-500 mt-4">
+              Discover more skilled artisans and their unique creations
+            </p>
+          </motion.div>
+        )}
       </div>
+
+      {/* Artisan Detail Modal */}
+      <AnimatePresence>
+        {showArtisanModal && selectedArtisan && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+            onClick={() => setShowArtisanModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', duration: 0.5 }}
+              className="bg-white rounded-3xl w-full max-w-2xl max-h-[80vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal Header with Cover Image */}
+              <div className="relative h-48 bg-gradient-to-r from-amber-600 to-amber-800">
+                <img 
+                  src={selectedArtisan.coverImage || 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg'}
+                  alt={selectedArtisan.name}
+                  className="w-full h-full object-cover opacity-50"
+                />
+                <button
+                  onClick={() => setShowArtisanModal(false)}
+                  className="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                >
+                  <FiX className="h-5 w-5" />
+                </button>
+                
+                {/* Profile Image */}
+                <div className="absolute -bottom-16 left-8">
+                  <div className="relative">
+                    <div className="w-32 h-32 rounded-2xl border-4 border-white overflow-hidden shadow-xl bg-white">
+                      <img
+                        src={selectedArtisan.profileImage || selectedArtisan.avatar?.url || `https://ui-avatars.com/api/?name=${selectedArtisan.name}&background=8B4513&color=fff&size=128`}
+                        alt={selectedArtisan.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    {selectedArtisan.isVerified && (
+                      <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center border-2 border-white">
+                        <FiShield className="h-4 w-4 text-white" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Content */}
+              <div className="pt-20 p-8">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900">{selectedArtisan.name}</h2>
+                  <p className="text-amber-700 font-medium text-lg">{selectedArtisan.businessName}</p>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="bg-amber-50 rounded-xl p-4 text-center">
+                    <div className="text-2xl font-bold text-amber-700">{selectedArtisan.experience || 0}</div>
+                    <div className="text-xs text-gray-600">Years</div>
+                  </div>
+                  <div className="bg-amber-50 rounded-xl p-4 text-center">
+                    <div className="text-2xl font-bold text-amber-700">{selectedArtisan.productCount || 0}</div>
+                    <div className="text-xs text-gray-600">Products</div>
+                  </div>
+                  <div className="bg-amber-50 rounded-xl p-4 text-center">
+                    <div className="flex items-center justify-center text-2xl font-bold text-amber-700">
+                      {selectedArtisan.rating || 0}
+                      <FiStar className="h-4 w-4 ml-1 fill-current" />
+                    </div>
+                    <div className="text-xs text-gray-600">({selectedArtisan.reviewCount || 0} reviews)</div>
+                  </div>
+                </div>
+
+                {/* Location */}
+                <div className="flex items-center text-gray-600 mb-4">
+                  <FiMapPin className="h-5 w-5 mr-2 text-amber-600" />
+                  <span>{selectedArtisan.location || 'Location not specified'}</span>
+                </div>
+
+                {/* Bio */}
+                <div className="mb-6">
+                  <h3 className="font-semibold text-gray-900 mb-2">About</h3>
+                  <p className="text-gray-600 leading-relaxed">
+                    {selectedArtisan.bio || selectedArtisan.description || 'Skilled artisan creating beautiful handcrafted products with passion and dedication.'}
+                  </p>
+                </div>
+
+                {/* Specialties */}
+                {selectedArtisan.specialties && selectedArtisan.specialties.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="font-semibold text-gray-900 mb-3">Specialties</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedArtisan.specialties.map((spec, idx) => (
+                        <span key={idx} className="px-4 py-2 bg-amber-50 text-amber-700 rounded-full text-sm font-medium">
+                          {spec}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Products Preview */}
+                {selectedArtisan.products && selectedArtisan.products.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="font-semibold text-gray-900 mb-3">Recent Products</h3>
+                    <div className="grid grid-cols-3 gap-3">
+                      {selectedArtisan.products.slice(0, 3).map((product, idx) => (
+                        <div key={idx} className="relative group cursor-pointer" onClick={() => navigate(`/products/${product._id}`)}>
+                          <img
+                            src={product.images?.[0]?.url || 'https://via.placeholder.com/100'}
+                            alt={product.name}
+                            className="w-full h-20 object-cover rounded-lg"
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                            <span className="text-white text-xs font-medium">View</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons - 3 proper buttons */}
+                <div className="grid grid-cols-3 gap-3 pt-4 border-t">
+                  <button
+                    onClick={() => {
+                      setShowArtisanModal(false);
+                      navigate(`/artisans/${selectedArtisan._id}`);
+                    }}
+                    className="px-4 py-3 border-2 border-amber-600 text-amber-700 rounded-xl font-semibold hover:bg-amber-50 transition-colors text-sm flex items-center justify-center space-x-1"
+                  >
+                    <FiUsers className="h-4 w-4" />
+                    <span>View Profile</span>
+                  </button>
+                  <button
+                    onClick={handleOpenCustomizationChat}
+                    disabled={modalLoading}
+                    className="px-4 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-50 transition-colors text-sm flex items-center justify-center space-x-1"
+                  >
+                    {modalLoading ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <FiTool className="h-4 w-4" />}
+                    <span>Customize Chat</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowArtisanModal(false);
+                      navigate(`/artisans/${selectedArtisan._id}/shop`);
+                    }}
+                    className="px-4 py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 transition-colors text-sm flex items-center justify-center space-x-1"
+                  >
+                    <FiPackage className="h-4 w-4" />
+                    <span>View Shop</span>
+                  </button>
+                </div>
+
+                {/* Customization Chatbox */}
+                {showCustomizationChat && (
+                  <div className="mt-4 border-2 border-purple-200 rounded-xl overflow-hidden">
+                    <div className="bg-purple-50 px-4 py-3 flex items-center justify-between">
+                      <h4 className="font-semibold text-purple-800 flex items-center space-x-2">
+                        <FiTool className="h-4 w-4" /><span>Customization Chat with {selectedArtisan.name}</span>
+                      </h4>
+                      <button onClick={() => setShowCustomizationChat(false)} className="text-purple-500 hover:text-purple-800">
+                        <FiX className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="bg-gray-50 p-3 space-y-2 max-h-48 overflow-y-auto">
+                      {customChatHistory.length === 0 && (
+                        <p className="text-center text-gray-400 text-sm py-4">Send a message to start customization chat</p>
+                      )}
+                      {customChatHistory.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.sender === user?._id ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${msg.sender === user?._id ? 'bg-purple-600 text-white' : 'bg-white text-gray-900 shadow-sm'}`}>
+                            {msg.message}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-3 bg-white border-t flex space-x-2">
+                      <input
+                        type="text"
+                        value={customizationMsg}
+                        onChange={e => setCustomizationMsg(e.target.value)}
+                        onKeyPress={e => e.key === 'Enter' && handleSendCustomizationMsg()}
+                        placeholder="Describe your customization request..."
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                      />
+                      <button
+                        onClick={handleSendCustomizationMsg}
+                        disabled={sendingCustomMsg || !customizationMsg.trim()}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+                      >
+                        {sendingCustomMsg ? '...' : 'Send'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Artisan's Products */}
+                <div className="mt-4 pt-4 border-t">
+                  <h3 className="font-semibold text-gray-900 mb-3">Products by {selectedArtisan.name}</h3>
+                  {loadingModalProducts ? (
+                    <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-600 border-t-transparent" /></div>
+                  ) : modalProducts.length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center py-4">No products available</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {modalProducts.map((prod) => (
+                        <div key={prod._id} className="bg-gray-50 rounded-xl overflow-hidden border border-gray-100">
+                          <div className="relative h-24 cursor-pointer" onClick={() => { setShowArtisanModal(false); navigate(`/products/${prod._id}`); }}>
+                            <img src={prod.images?.[0]?.url || 'https://via.placeholder.com/200'} alt={prod.name}
+                              className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                          </div>
+                          <div className="p-2">
+                            <p className="text-xs font-semibold text-gray-900 truncate">{prod.name}</p>
+                            <p className="text-xs text-amber-700 font-bold">Rs. {prod.price?.toLocaleString()}</p>
+                            <button
+                              onClick={() => { setShowArtisanModal(false); navigate(`/products/${prod._id}`); }}
+                              className="w-full mt-1.5 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-colors"
+                            >
+                              Buy Now
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Security Note */}
+                <p className="text-xs text-gray-400 text-center mt-2 flex items-center justify-center">
+                  <FiClock className="h-3 w-3 mr-1" />
+                  Messages are end-to-end encrypted and private
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -22,21 +22,22 @@ export const SecureChatProvider = ({ children }) => {
   const [messages, setMessages] = useState({});
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [connected, setConnected] = useState(false);
   
   const { user, token, isAuthenticated } = useAuth();
 
-  console.log('SecureChatContext - Auth state:', { user, isAuthenticated, token });
-
-  // Initialize socket connection only when user is authenticated
+  // Initialize socket connection
   useEffect(() => {
     if (!isAuthenticated || !user || !token) {
-      console.log('Not authenticated, skipping socket connection');
+      if (socket) {
+        socket.disconnect();
+        setSocket(null);
+        setConnected(false);
+      }
       return;
     }
 
-    console.log('Initializing socket connection for user:', user._id);
-
-    const socketUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000';
+    const socketUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5001';
     
     const newSocket = io(socketUrl, {
       auth: { token },
@@ -46,138 +47,167 @@ export const SecureChatProvider = ({ children }) => {
       reconnectionDelay: 1000,
     });
 
-    setSocket(newSocket);
-
     newSocket.on('connect', () => {
       console.log('🔐 Secure chat connected:', newSocket.id);
+      setConnected(true);
+      newSocket.emit('register-user', user._id || user.id);
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('🔐 Secure chat disconnected');
+      setConnected(false);
     });
 
     newSocket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
     });
 
-    newSocket.on('receive-message', ({ roomId, message, sender, timestamp, customizationId }) => {
-      setMessages(prev => ({
-        ...prev,
-        [roomId]: [...(prev[roomId] || []), { 
-          message, 
-          sender, 
-          timestamp, 
-          customizationId,
-          isOwn: sender === user._id 
-        }]
-      }));
+    newSocket.on('receive-message', (data) => {
+      const { roomId, message, sender, timestamp, customizationId, _id } = data;
+      
+      setMessages(prev => {
+        const roomMessages = prev[roomId] || [];
+        // Avoid duplicates
+        if (roomMessages.some(m => m._id === _id)) return prev;
+        
+        return {
+          ...prev,
+          [roomId]: [...roomMessages, { 
+            _id,
+            message, 
+            sender, 
+            timestamp, 
+            customizationId,
+            isOwn: sender === (user._id || user.id)
+          }]
+        };
+      });
 
-      if (sender !== user._id) {
+      if (sender !== (user._id || user.id)) {
         setUnreadCount(prev => prev + 1);
+        toast.custom((t) => (
+          <div 
+            onClick={() => window.location.href = `/chat/${roomId}`}
+            className="bg-white rounded-lg shadow-lg p-4 cursor-pointer hover:bg-gray-50 border-l-4 border-primary"
+          >
+            <p className="font-semibold text-sm">New message</p>
+            <p className="text-xs text-gray-600 mt-1">{message.substring(0, 50)}...</p>
+          </div>
+        ), { duration: 3000 });
       }
     });
 
+    newSocket.on('user-typing', ({ roomId, isTyping, userId }) => {
+      // Handle typing indicator
+      console.log(`User ${userId} is ${isTyping ? 'typing' : 'not typing'} in room ${roomId}`);
+    });
+
+    setSocket(newSocket);
+
     return () => {
       newSocket.disconnect();
+      setSocket(null);
+      setConnected(false);
     };
   }, [isAuthenticated, user, token]);
 
-  // Join room with security check
   const joinRoom = useCallback(async (roomId) => {
-    if (!socket || !isAuthenticated || !user) {
-      console.log('Cannot join room: not authenticated');
-      toast.error('Please login to join chat');
-      return false;
-    }
-
+    if (!socket || !roomId) return false;
+    
     try {
+      socket.emit('join-room', roomId);
+      setActiveRoom(roomId);
+      
+      // Load messages
+      setLoading(true);
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/chat/rooms/${roomId}/verify`,
+        `${apiUrl}/chat/rooms/${roomId}/messages`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      if (response.data.hasAccess) {
-        socket.emit('join-room', roomId);
-        setActiveRoom(roomId);
-        await loadMessages(roomId);
-        return true;
-      } else {
-        toast.error('You do not have access to this chat');
-        return false;
+      
+      if (response.data.success) {
+        const loadedMessages = (response.data.messages || []).map(msg => ({
+          ...msg,
+          isOwn: msg.sender === (user._id || user.id)
+        }));
+        
+        setMessages(prev => ({
+          ...prev,
+          [roomId]: loadedMessages
+        }));
       }
+      
+      return true;
     } catch (error) {
       console.error('Failed to join room:', error);
-      toast.error('Cannot access chat room');
+      toast.error('Failed to load chat messages');
       return false;
+    } finally {
+      setLoading(false);
     }
-  }, [socket, isAuthenticated, user, token]);
+  }, [socket, token, user]);
 
-  // Leave room
   const leaveRoom = useCallback(() => {
     if (activeRoom && socket) {
       socket.emit('leave-room', activeRoom);
+      setActiveRoom(null);
     }
-    setActiveRoom(null);
   }, [activeRoom, socket]);
 
-  // Send message with authentication check
   const sendMessage = useCallback(async (message, customizationId = null) => {
-    if (!socket || !activeRoom || !isAuthenticated || !user) {
-      console.log('Cannot send message: not authenticated');
-      toast.error('Please login to send messages');
-      return false;
-    }
+    if (!socket || !activeRoom || !message.trim()) return false;
 
     try {
-      const messageData = {
-        roomId: activeRoom,
-        message,
-        sender: user._id,
-        senderName: user.name,
-        senderAvatar: user.avatar?.url,
-        customizationId,
-        timestamp: new Date().toISOString()
-      };
-
-      socket.emit('send-message', messageData);
-
-      setMessages(prev => ({
-        ...prev,
-        [activeRoom]: [...(prev[activeRoom] || []), {
-          ...messageData,
-          isOwn: true,
-          status: 'sending'
-        }]
-      }));
-
-      return true;
-    } catch (error) {
-      toast.error('Failed to send message');
-      return false;
-    }
-  }, [socket, activeRoom, isAuthenticated, user]);
-
-  // Create or get secure chat room for customization
-  const createCustomizationRoom = useCallback(async (artisanId, productId, customizationData) => {
-    if (!isAuthenticated || !user) {
-      toast.error('Please login to start customization');
-      return null;
-    }
-
-    setLoading(true);
-    try {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
       const response = await axios.post(
-        `${process.env.REACT_APP_API_URL}/chat/customization/room`,
-        {
-          artisanId,
-          productId,
-          customizationData
+        `${apiUrl}/chat/messages`,
+        { 
+          roomId: activeRoom, 
+          message: message.trim(), 
+          customizationId,
+          type: 'text'
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      
+      if (response.data.success) {
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      toast.error('Failed to send message');
+      return false;
+    }
+  }, [socket, activeRoom, token]);
 
-      const { room } = response.data;
+  const sendTyping = useCallback((isTyping) => {
+    if (socket && activeRoom) {
+      socket.emit('typing', { roomId: activeRoom, isTyping });
+    }
+  }, [socket, activeRoom]);
+
+  const createCustomizationRoom = useCallback(async (artisanId, productId, customizationData = {}) => {
+    try {
+      setLoading(true);
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+      const response = await axios.post(
+        `${apiUrl}/chat/customization/room`,
+        { artisanId, productId, customizationData },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       
-      setRooms(prev => [room, ...prev]);
-      
-      toast.success('Chat room created');
-      return room;
+      if (response.data.success) {
+        const room = response.data.room;
+        setRooms(prev => {
+          // Check if room already exists in list
+          if (prev.some(r => r._id === room._id)) return prev;
+          return [room, ...prev];
+        });
+        return room;
+      }
+      return null;
     } catch (error) {
       console.error('Failed to create room:', error);
       toast.error(error.response?.data?.message || 'Failed to start chat');
@@ -185,117 +215,64 @@ export const SecureChatProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, user, token]);
+  }, [token]);
 
-  // Load messages
-  const loadMessages = useCallback(async (roomId, page = 1) => {
-    if (!token) return [];
-
+  const updateCustomization = useCallback(async (roomId, updates) => {
     try {
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/chat/rooms/${roomId}/messages`,
-        { 
-          params: { page, limit: 50 },
-          headers: { Authorization: `Bearer ${token}` }
-        }
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+      const response = await axios.put(
+        `${apiUrl}/chat/customization/${roomId}`,
+        updates,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      setMessages(prev => ({
-        ...prev,
-        [roomId]: response.data.messages || []
-      }));
-
-      return response.data.messages;
+      return response.data.success;
     } catch (error) {
-      console.error('Failed to load messages:', error);
-      return [];
+      console.error('Failed to update customization:', error);
+      toast.error('Failed to update customization');
+      return false;
     }
   }, [token]);
 
-  // Load user's chat rooms
   const loadRooms = useCallback(async () => {
-    if (!token || !isAuthenticated) return;
-
     try {
+      setLoading(true);
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/chat/rooms`,
+        `${apiUrl}/chat/rooms`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      setRooms(response.data.rooms || []);
       
-      const totalUnread = response.data.rooms.reduce((sum, room) => {
-        const userUnread = room.unreadCount?.[user?._id] || 0;
-        return sum + userUnread;
-      }, 0);
-      
-      setUnreadCount(totalUnread);
+      if (response.data.success) {
+        setRooms(response.data.rooms || []);
+        
+        // Calculate total unread
+        const totalUnread = (response.data.rooms || []).reduce((sum, room) => {
+          return sum + (room.unreadCount?.[user?._id] || 0);
+        }, 0);
+        setUnreadCount(totalUnread);
+      }
     } catch (error) {
       console.error('Failed to load rooms:', error);
+    } finally {
+      setLoading(false);
     }
-  }, [token, isAuthenticated, user]);
-
-  // Mock data for demonstration
-  const mockRooms = [
-    {
-      _id: 'room1',
-      participants: [
-        { _id: user?._id || 'user1', name: 'You', avatar: null },
-        { _id: 'artisan1', name: 'Priya Sharma', avatar: null }
-      ],
-      product: {
-        _id: 'prod1',
-        name: 'Handcrafted Ceramic Vase',
-        image: 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=200'
-      },
-      customization: {
-        status: 'in_progress',
-        options: { color: 'Blue', size: 'Medium' },
-        price: 2499
-      },
-      lastMessage: {
-        message: 'I can make it with the blue glaze you requested',
-        timestamp: new Date().toISOString()
-      },
-      unreadCount: { [user?._id || 'user1']: 2 }
-    }
-  ];
-
-  const mockMessages = {
-    room1: user ? [
-      {
-        _id: 'msg1',
-        message: 'Hi, I\'d like to customize this vase with blue glaze',
-        sender: user._id,
-        senderName: user.name,
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        isOwn: true
-      },
-      {
-        _id: 'msg2',
-        message: 'Sure! I have a beautiful blue glaze that would work well',
-        sender: 'artisan1',
-        senderName: 'Priya Sharma',
-        timestamp: new Date(Date.now() - 1800000).toISOString(),
-        isOwn: false
-      }
-    ] : []
-  };
+  }, [token, user]);
 
   const value = {
     socket,
     activeRoom,
-    rooms: isAuthenticated ? (rooms.length > 0 ? rooms : mockRooms) : [],
-    messages: isAuthenticated ? (Object.keys(messages).length > 0 ? messages : mockMessages) : {},
+    rooms,
+    messages,
     unreadCount,
     loading,
+    connected,
     joinRoom,
     leaveRoom,
     sendMessage,
-    loadRooms,
-    loadMessages,
+    sendTyping,
     createCustomizationRoom,
-    isAuthenticated
+    updateCustomization,
+    loadRooms,
   };
 
   return (

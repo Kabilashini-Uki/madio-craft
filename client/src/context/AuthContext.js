@@ -1,15 +1,13 @@
 // src/context/AuthContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
 
@@ -18,112 +16,160 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
 
-  // Set axios defaults
   useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } else {
-      delete axios.defaults.headers.common['Authorization'];
-    }
-  }, [token]);
+    const initAuth = async () => {
+      try {
+        const storedToken = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
 
-  // Load user on startup
-  useEffect(() => {
-    const loadUser = async () => {
-      const storedUser = localStorage.getItem('user');
-      const storedToken = localStorage.getItem('token');
-      
-      console.log('Loading user from storage:', { storedUser, storedToken });
-      
-      if (storedUser && storedToken) {
-        try {
-          setUser(JSON.parse(storedUser));
-          setToken(storedToken);
-        } catch (err) {
-          console.error('Error loading user:', err);
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setToken(null);
-          setUser(null);
+        if (storedToken && storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+
+          // Verify token is still valid
+          api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+
+          // Optional: Verify token with backend
+          try {
+            const response = await api.get('/auth/me');
+            if (response.data.success) {
+              setUser(response.data.user);
+              setToken(storedToken);
+            } else {
+              // Token invalid, clear storage
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+              delete api.defaults.headers.common['Authorization'];
+            }
+          } catch (error) {
+            // Token verification failed, but we'll still use stored user
+            setUser(parsedUser);
+            setToken(storedToken);
+          }
         }
+      } catch (e) {
+        console.error('Failed to restore auth state:', e);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        delete api.defaults.headers.common['Authorization'];
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
-    loadUser();
+    initAuth();
   }, []);
 
-  // Login function
   const login = async (email, password) => {
     try {
-      console.log('Attempting login with:', email);
-      
-      const res = await axios.post(`http://localhost:5000/api/auth/login`, {
-        email,
-        password
-      });
-      
+      console.log('Attempting login for:', email);
+
+      const res = await api.post('/auth/login', { email, password });
       console.log('Login response:', res.data);
-      
+
       const { token, user } = res.data;
-      
+
+      if (!token || !user) {
+        throw new Error('Invalid response from server');
+      }
+
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      setToken(token);
+
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
       setUser(user);
-      toast.success('Login successful!');
-      
-      return { success: true };
+      setToken(token);
+
+      toast.success(`Welcome back, ${user.name}!`);
+      return { success: true, user };
+
     } catch (err) {
       console.error('Login error:', err);
-      toast.error(err.response?.data?.message || 'Login failed');
-      return { success: false, error: err.response?.data?.message };
+      let message = 'Login failed';
+
+      if (err.message === 'Network Error' || err.message?.includes('connect')) {
+        message = 'Cannot connect to server. Please make sure the backend is running on port 5001.';
+      } else if (err.response?.data?.message) {
+        message = err.response.data.message;
+      } else if (err.message) {
+        message = err.message;
+      }
+
+      toast.error(message);
+      return { success: false, error: message };
     }
   };
 
-  // Register function
   const register = async (userData) => {
     try {
-      const res = await axios.post(`http://localhost:5000/api/auth/register`, userData);
+      console.log('Register attempt with data:', userData);
+
+      const res = await api.post('/auth/register', userData);
+      console.log('Register response:', res.data);
+
       const { token, user } = res.data;
-      
+
+      if (!token || !user) {
+        throw new Error('Invalid response from server');
+      }
+
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      setToken(token);
+
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
       setUser(user);
-      toast.success('Registration successful!');
-      
-      return { success: true };
+      setToken(token);
+
+      toast.success('Welcome to the Madio Craft');
+      return { success: true, user };
+
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Registration failed');
-      return { success: false, error: err.response?.data?.message };
+      console.error('Registration error:', err);
+      let message = 'Registration failed';
+
+      if (err.message === 'Network Error' || err.message?.includes('connect')) {
+        message = 'Cannot connect to server. Please make sure the backend is running on port 5001.';
+      } else if (err.response?.data?.message) {
+        message = err.response.data.message;
+      } else if (err.message) {
+        message = err.message;
+      }
+
+      toast.error(message);
+      return { success: false, error: message };
     }
   };
 
-  // Logout function
-  const logout = () => {
+  const logout = (silent = false) => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    setToken(null);
+
+    delete api.defaults.headers.common['Authorization'];
+
     setUser(null);
-    toast.success('Logged out successfully');
+    setToken(null);
+
+    if (!silent) {
+      toast.success('Logged out successfully');
+    }
+  };
+
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
   };
 
   const value = {
     user,
     loading,
-    register,
-    login,
-    logout,
     token,
-    isAuthenticated: !!user
+    login,
+    register,
+    logout,
+    updateUser,
+    isAuthenticated: !!user && !!token,
   };
 
-  console.log('AuthProvider state:', { user, loading, isAuthenticated: !!user });
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

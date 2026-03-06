@@ -1,4 +1,4 @@
-// components/Footer.js
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { 
@@ -17,16 +17,16 @@ const Footer = () => {
 
   return (
     <footer className="relative bg-gradient-to-br from-gray-900 to-gray-950 text-white overflow-hidden">
-      {/* Background Pattern */}
+  
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-0 left-0 w-96 h-96 bg-primary rounded-full filter blur-3xl"></div>
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-secondary rounded-full filter blur-3xl"></div>
       </div>
 
       <div className="container mx-auto px-4 relative z-10">
-        {/* Main Footer Content */}
+   
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 pt-20 pb-12">
-          {/* Brand Column */}
+        
           <div className="lg:col-span-4 space-y-6">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -49,7 +49,7 @@ const Footer = () => {
               </p>
             </motion.div>
 
-            {/* Social Links */}
+
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -74,7 +74,6 @@ const Footer = () => {
             </motion.div>
           </div>
 
-          {/* Quick Links */}
           <div className="lg:col-span-2">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -98,7 +97,7 @@ const Footer = () => {
             </motion.div>
           </div>
 
-          {/* Support */}
+    
           <div className="lg:col-span-2">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -122,7 +121,7 @@ const Footer = () => {
             </motion.div>
           </div>
 
-          {/* Contact Info */}
+   
           <div className="lg:col-span-4">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -171,7 +170,7 @@ const Footer = () => {
           </div>
         </div>
 
-        {/* Newsletter Section */}
+     
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -198,7 +197,7 @@ const Footer = () => {
           </div>
         </motion.div>
 
-        {/* Bottom Bar */}
+    
         <div className="border-t border-white/10 py-8 mt-4">
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
             <p className="text-sm text-gray-400">

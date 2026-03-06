@@ -21,8 +21,10 @@ import {
   FiPlus
 } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-const Dashboard = ({ user }) => {
+const Dashboard = () => {
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
 
   const stats = [
