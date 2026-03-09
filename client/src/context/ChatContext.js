@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { io } from 'socket.io-client';
-import axios from 'axios';
-import { useAuth } from './AuthContext'; // Assuming you have AuthContext
+import api from '../services/api';
+import { useAuth } from './AuthContext';
 
 const ChatContext = createContext();
 
@@ -11,23 +11,19 @@ export const ChatProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [activeRoom, setActiveRoom] = useState(null);
   const [rooms, setRooms] = useState([]);
-  const [messages, setMessages] = useState({}); // Store messages by room ID
+  const [messages, setMessages] = useState({});
   const [unreadCount, setUnreadCount] = useState(0);
-  const { user } = useAuth(); // Get user from auth context
+  const { user } = useAuth();
 
-  // Initialize socket connection
   useEffect(() => {
     if (!user) return;
 
-    const newSocket = io(process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5000', {
-      auth: {
-        token: localStorage.getItem('token')
-      }
+    const newSocket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000', {
+      auth: { token: localStorage.getItem('token') }
     });
 
     setSocket(newSocket);
 
-    // Socket event listeners
     newSocket.on('connect', () => {
       console.log('Connected to chat server:', newSocket.id);
     });
@@ -39,23 +35,17 @@ export const ChatProvider = ({ children }) => {
       }));
     });
 
-    return () => {
-      newSocket.disconnect();
-    };
+    return () => { newSocket.disconnect(); };
   }, [user]);
 
-  // Join room
   const joinRoom = useCallback((roomId) => {
     if (socket && roomId) {
       socket.emit('join-room', roomId);
       setActiveRoom(roomId);
-      
-      // Load messages for this room
       loadMessages(roomId);
     }
   }, [socket]);
 
-  // Leave room
   const leaveRoom = useCallback(() => {
     if (activeRoom && socket) {
       socket.emit('leave-room', activeRoom);
@@ -63,31 +53,18 @@ export const ChatProvider = ({ children }) => {
     setActiveRoom(null);
   }, [activeRoom, socket]);
 
-  // Send message
   const sendMessage = useCallback((message, roomId = activeRoom) => {
     if (socket && roomId) {
-      socket.emit('send-message', {
-        roomId,
-        message,
-        sender: user?._id
-      });
+      socket.emit('send-message', { roomId, message, sender: user?._id });
     }
   }, [socket, activeRoom, user]);
 
-  // Load chat rooms
   const loadRooms = useCallback(async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/chat/rooms`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const res = await api.get('/chat/rooms');
       setRooms(res.data.rooms);
-      
-      // Calculate total unread count
       const totalUnread = res.data.rooms.reduce((sum, room) => {
-        const userUnread = room.unreadCount?.[user?._id] || 0;
-        return sum + userUnread;
+        return sum + (room.unreadCount?.[user?._id] || 0);
       }, 0);
       setUnreadCount(totalUnread);
     } catch (err) {
@@ -95,35 +72,18 @@ export const ChatProvider = ({ children }) => {
     }
   }, [user]);
 
-  // Load room messages
   const loadMessages = useCallback(async (roomId) => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/chat/rooms/${roomId}/messages`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      setMessages(prev => ({
-        ...prev,
-        [roomId]: res.data.messages || []
-      }));
+      const res = await api.get(`/chat/rooms/${roomId}/messages`);
+      setMessages(prev => ({ ...prev, [roomId]: res.data.messages || [] }));
     } catch (err) {
       console.error('Failed to load messages:', err);
     }
   }, []);
 
-  // Create or get room
   const createRoom = useCallback(async (artisanId, productId) => {
     try {
-      const res = await axios.post(`${process.env.REACT_APP_API_URL}/chat/room`, {
-        artisanId,
-        productId
-      }, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      
+      const res = await api.post('/chat/room', { artisanId, productId });
       setRooms(prev => [res.data.room, ...prev]);
       return res.data.room;
     } catch (err) {
@@ -133,17 +93,10 @@ export const ChatProvider = ({ children }) => {
   }, []);
 
   const value = {
-    socket,
-    activeRoom,
-    rooms,
+    socket, activeRoom, rooms,
     messages: messages[activeRoom] || [],
-    unreadCount,
-    joinRoom,
-    leaveRoom,
-    sendMessage,
-    loadRooms,
-    loadMessages,
-    createRoom,
+    unreadCount, joinRoom, leaveRoom,
+    sendMessage, loadRooms, loadMessages, createRoom,
     allMessages: messages
   };
 

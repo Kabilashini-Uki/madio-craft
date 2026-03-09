@@ -10,7 +10,7 @@ import {
 import { useSecureChat } from '../context/SecureChatContext';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import axios from 'axios';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 const SecureCustomizationChat = ({ 
@@ -148,16 +148,9 @@ const SecureCustomizationChat = ({
         formData.append('file', file);
         formData.append('type', 'chat_attachment');
         
-        const response = await axios.post(
-          `${process.env.REACT_APP_API_URL}/upload/chat`,
-          formData,
-          {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-              Authorization: `Bearer ${localStorage.getItem('token')}`
-            }
-          }
-        );
+        const response = await api.post('/upload/chat', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
         
         return {
           url: response.data.url,

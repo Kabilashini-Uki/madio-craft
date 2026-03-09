@@ -121,15 +121,15 @@ const BuyerDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 min-h-screen bg-white shadow-lg flex-shrink-0 fixed left-0 top-20 z-10">
+        <aside className="w-64 min-h-screen bg-gradient-to-b from-blue-900 to-blue-800 text-white flex-shrink-0 fixed left-0 top-20 z-10">
           <div className="p-6">
             <div className="flex items-center space-x-3 mb-8">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
                 {user?.name?.[0] || 'B'}
               </div>
               <div>
-                <p className="font-semibold text-gray-900 text-sm">{user?.name}</p>
-                <p className="text-xs text-gray-500">Buyer</p>
+                <p className="font-semibold text-blue-100 text-sm">{user?.name}</p>
+                <p className="text-xs text-blue-300">Buyer</p>
               </div>
             </div>
             <nav className="space-y-1">
@@ -137,17 +137,19 @@ const BuyerDashboard = () => {
                 <button key={item.id} onClick={() => setActiveTab(item.id)}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                     activeTab === item.id
-                      ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-md'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-white/20 text-white shadow-md'
+                      : 'text-blue-200 hover:bg-white/10 hover:text-white'
                   }`}>
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>
                 </button>
               ))}
-              <button onClick={() => { logout(); navigate('/login'); }}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 mt-2">
-                <FiLogOut className="h-4 w-4" /><span>Logout</span>
-              </button>
+              <div className="border-t border-blue-700 pt-2 mt-4">
+                <button onClick={() => { logout(); navigate('/login'); }}
+                  className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-red-300 hover:bg-red-900/30">
+                  <FiLogOut className="h-4 w-4" /><span>Logout</span>
+                </button>
+              </div>
             </nav>
           </div>
         </aside>
@@ -263,11 +265,14 @@ const BuyerDashboard = () => {
                               <FiStar className="h-3 w-3" /><span>Leave Review</span>
                             </button>
                           )}
-                          {!['delivered','cancelled'].includes(order.orderStatus) && (
+                          {!['order ready', 'shipped', 'delivered', 'cancelled'].includes(order.orderStatus) && (
                             <button onClick={() => handleCancelOrder(order._id)}
                               className="flex items-center space-x-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100">
                               <span>Cancel Order</span>
                             </button>
+                          )}
+                          {order.orderStatus === 'order ready' && (
+                            <span className="text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">Ready — Cannot cancel</span>
                           )}
                         </div>
                       </div>

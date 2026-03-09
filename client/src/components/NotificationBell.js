@@ -4,7 +4,7 @@
 // Uses NotifContext for state and SocketContext events (handled in NotifContext).
 
 import React, { useState, useRef, useEffect } from 'react';
-import { FiBell, FiX, FiPackage, FiShoppingBag, FiMessageCircle, FiAlertTriangle } from 'react-icons/fi';
+import { FiBell, FiX, FiPackage, FiShoppingBag, FiMessageCircle, FiAlertTriangle, FiTool, FiUserPlus } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNotif } from '../context/NotifContext';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +15,9 @@ const ICONS = {
   'order-status': { Icon: FiPackage, color: 'text-blue-600', bg: 'bg-blue-50' },
   'order-cancelled': { Icon: FiAlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
   'chat': { Icon: FiMessageCircle, color: 'text-purple-600', bg: 'bg-purple-50' },
+  'customization-request': { Icon: FiTool, color: 'text-purple-600', bg: 'bg-purple-50' },
+  'customization-response': { Icon: FiTool, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'new-registration': { Icon: FiUserPlus, color: 'text-indigo-600', bg: 'bg-indigo-50' },
 };
 
 const NotificationBell = () => {

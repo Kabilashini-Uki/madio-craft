@@ -1,4 +1,4 @@
-// src/pages/AdminDashboard.js - Complete Admin Panel
+// src/pages/AdminDashboard.js - Complete Admin Panel (Updated)
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -6,17 +6,30 @@ import {
   FiCheckCircle, FiSearch, FiEye, FiTrash2,
   FiHome, FiLogOut, FiMenu,
   FiRefreshCw, FiX,
-  FiAward, FiTrendingUp,
+  FiAward,
   FiGrid, FiList,
-  FiBarChart2, FiLogIn
+  FiLogIn,
+  FiStar, FiMessageSquare,
+  FiArrowLeft, FiAlertCircle
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useNotif } from '../context/NotifContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
+// Revenue Icon (receipt/bill style)
+const RevenueIcon = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+  </svg>
+);
+
 const AdminDashboard = () => {
   const { user, logout, updateUser } = useAuth();
+  const { addNotification } = useNotif();
+  const { socket } = useSocket();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -28,13 +41,41 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedModal, setSelectedModal] = useState(null);
   const [actionLoading, setActionLoading] = useState('');
-  const [artisanStatsModal, setArtisanStatsModal] = useState(null);
-  const [artisanStats, setArtisanStats] = useState(null);
-  const [loadingArtisanStats, setLoadingArtisanStats] = useState(false);
   const [artisanViewMode, setArtisanViewMode] = useState('grid');
   const [buyerViewMode, setBuyerViewMode] = useState('grid');
 
+  // Artisan detail
+  const [selectedArtisan, setSelectedArtisan] = useState(null);
+  const [artisanDetailTab, setArtisanDetailTab] = useState('profile');
+  const [artisanStats, setArtisanStats] = useState(null);
+  const [loadingArtisanStats, setLoadingArtisanStats] = useState(false);
+
+  // Buyer detail
+  const [selectedBuyer, setSelectedBuyer] = useState(null);
+
   useEffect(() => { fetchAll(); }, []);
+
+  // Listen for new user registrations
+  useEffect(() => {
+    if (!socket) return;
+    const handleNewUser = (data) => {
+      addNotification({
+        type: 'new-registration',
+        title: 'New User Registered!',
+        body: `${data.name} (${data.role}) just signed up.`,
+        icon: '👤',
+      });
+      toast.custom((t) => (
+        <div className={`bg-white border-l-4 border-indigo-500 rounded-xl shadow-xl p-4 max-w-sm w-full cursor-pointer ${t.visible ? 'opacity-100' : 'opacity-0'}`} onClick={() => toast.dismiss(t.id)}>
+          <p className="font-bold text-gray-900 text-sm">👤 New Registration!</p>
+          <p className="text-xs text-gray-600 mt-1">{data.name} registered as <span className="font-semibold capitalize text-indigo-700">{data.role}</span></p>
+        </div>
+      ), { duration: 6000, position: 'top-right' });
+      fetchAll();
+    };
+    socket.on('new-user-registered', handleNewUser);
+    return () => socket.off('new-user-registered', handleNewUser);
+  }, [socket, addNotification]);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -52,6 +93,17 @@ const AdminDashboard = () => {
     } catch (e) {
       toast.error('Failed to load data');
     } finally { setLoading(false); }
+  };
+
+  const openArtisanDetail = async (artisan) => {
+    setSelectedArtisan(artisan);
+    setArtisanDetailTab('profile');
+    setLoadingArtisanStats(true);
+    try {
+      const res = await api.get(`/admin/artisans/${artisan._id}/stats`);
+      setArtisanStats(res.data.stats);
+    } catch (e) { toast.error('Failed to load artisan stats'); }
+    finally { setLoadingArtisanStats(false); }
   };
 
   const handleVerifyArtisan = async (userId) => {
@@ -96,7 +148,7 @@ const AdminDashboard = () => {
   };
 
   const handleLoginAs = async (targetUser) => {
-    if (!window.confirm(`Login as ${targetUser.name} (${targetUser.role})?\nThis will replace your current session. You can restore by logging in as admin again.`)) return;
+    if (!window.confirm(`Login as ${targetUser.name} (${targetUser.role})?\nThis will replace your current session.`)) return;
     try {
       const res = await api.post(`/admin/login-as/${targetUser._id}`);
       const { token, user: impUser } = res.data;
@@ -112,16 +164,6 @@ const AdminDashboard = () => {
     } catch (e) { toast.error('Failed to switch account'); }
   };
 
-  const openArtisanStats = async (artisan) => {
-    setArtisanStatsModal(artisan);
-    setLoadingArtisanStats(true);
-    try {
-      const res = await api.get(`/admin/artisans/${artisan._id}/stats`);
-      setArtisanStats(res.data.stats);
-    } catch (e) { toast.error('Failed to load artisan stats'); }
-    finally { setLoadingArtisanStats(false); }
-  };
-
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-800', confirmed: 'bg-blue-100 text-blue-800',
     in_production: 'bg-purple-100 text-purple-800', shipped: 'bg-orange-100 text-orange-800',
@@ -134,7 +176,6 @@ const AdminDashboard = () => {
     { id: 'buyers', label: 'Buyers', icon: FiUsers },
     { id: 'artisans', label: 'Artisans', icon: FiAward },
     { id: 'products', label: 'Products', icon: FiPackage },
-    { id: 'orders', label: 'Orders', icon: FiShoppingBag },
   ];
 
   if (loading) return (
@@ -146,6 +187,372 @@ const AdminDashboard = () => {
     </div>
   );
 
+  const Sidebar = ({ children, backLabel, onBack }) => (
+    <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-indigo-900 to-indigo-800 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+      <div className="p-4 flex items-center justify-between border-b border-indigo-700">
+        {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
+        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-indigo-700 rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
+      </div>
+      {sidebarOpen && onBack && (
+        <div className="p-4 border-b border-indigo-700">
+          <button onClick={onBack} className="flex items-center space-x-2 text-indigo-200 hover:text-white text-sm mb-2">
+            <FiArrowLeft className="h-4 w-4" /><span>{backLabel}</span>
+          </button>
+          {children}
+        </div>
+      )}
+      {!onBack && sidebarOpen && (
+        <div className="p-4 border-b border-indigo-700">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold">{user?.name?.[0] || 'A'}</div>
+            <div><p className="font-medium text-sm">{user?.name}</p><p className="text-xs text-indigo-300">Administrator</p></div>
+          </div>
+        </div>
+      )}
+    </aside>
+  );
+
+  // ─── Artisan Detail View ──────────────────────────────────────────────────
+  if (selectedArtisan) {
+    const artisanOrderList = orders.filter(o =>
+      (o.artisan?._id || o.artisan?.id || o.artisan) === selectedArtisan._id ||
+      o.artisan?.name === selectedArtisan.name
+    );
+    const deliveredOrders = artisanOrderList.filter(o => o.orderStatus === 'delivered');
+    const cancelledOrders = artisanOrderList.filter(o => o.orderStatus === 'cancelled');
+
+    const artDetailNavItems = [
+      { id: 'profile', label: 'Profile', icon: FiUsers },
+      { id: 'finance', label: 'Monthly Finance', icon: RevenueIcon },
+      { id: 'all-orders', label: 'All Orders', icon: FiShoppingBag },
+      { id: 'delivered', label: 'Delivered Orders', icon: FiCheckCircle },
+      { id: 'cancelled', label: 'Cancelled Orders', icon: FiAlertCircle },
+      { id: 'reviews', label: 'Customer Reviews', icon: FiMessageSquare },
+      { id: 'ratings', label: 'Ratings', icon: FiStar },
+    ];
+
+    return (
+      <div className="min-h-screen bg-gray-100 flex">
+        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-indigo-900 to-indigo-800 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+          <div className="p-4 flex items-center justify-between border-b border-indigo-700">
+            {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-indigo-700 rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
+          </div>
+          {sidebarOpen && (
+            <div className="p-4 border-b border-indigo-700">
+              <button onClick={() => { setSelectedArtisan(null); setArtisanStats(null); }} className="flex items-center space-x-2 text-indigo-200 hover:text-white text-sm mb-3">
+                <FiArrowLeft className="h-4 w-4" /><span>Back to Artisans</span>
+              </button>
+              <p className="text-xs text-indigo-400 uppercase tracking-wider mb-1">Artisan</p>
+              <p className="font-semibold text-white text-sm">{selectedArtisan.name}</p>
+              <p className="text-xs text-indigo-300">{selectedArtisan.artisanProfile?.businessName}</p>
+            </div>
+          )}
+          <nav className="p-4 space-y-1">
+            {artDetailNavItems.map(item => (
+              <button key={item.id} onClick={() => setArtisanDetailTab(item.id)}
+                className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-0'} py-3 rounded-xl text-sm font-medium transition-all ${artisanDetailTab === item.id ? 'bg-white/20 text-white' : 'text-indigo-200 hover:bg-white/10 hover:text-white'}`}>
+                <item.icon className="h-4 w-4 flex-shrink-0" />
+                {sidebarOpen && <span>{item.label}</span>}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <main className={`${sidebarOpen ? 'ml-64' : 'ml-20'} flex-1 p-6 pt-8 transition-all duration-300`}>
+          {loadingArtisanStats ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent" />
+            </div>
+          ) : (
+            <>
+              {artisanDetailTab === 'profile' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Artisan Profile</h1>
+                  <div className="bg-white rounded-2xl shadow-sm p-6 max-w-2xl">
+                    <div className="flex items-center space-x-4 mb-6">
+                      <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center text-3xl font-bold text-amber-600">{selectedArtisan.name?.[0]}</div>
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">{selectedArtisan.name}</h2>
+                        <p className="text-gray-500">{selectedArtisan.email}</p>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${selectedArtisan.isVerified ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{selectedArtisan.isVerified ? '✓ Verified' : 'Pending Verification'}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${selectedArtisan.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{selectedArtisan.isSuspended ? 'Suspended' : 'Active'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {[
+                        ['Business Name', selectedArtisan.artisanProfile?.businessName],
+                        ['Description', selectedArtisan.artisanProfile?.description],
+                        ['Phone', selectedArtisan.phone],
+                        ['Location', selectedArtisan.location],
+                        ['Years Experience', selectedArtisan.artisanProfile?.yearsOfExperience],
+                        ['Joined', new Date(selectedArtisan.createdAt).toLocaleDateString()],
+                      ].filter(([, v]) => v != null && v !== '').map(([k, v]) => (
+                        <div key={k} className="flex justify-between py-2 border-b border-gray-50">
+                          <span className="text-sm text-gray-500">{k}</span>
+                          <span className="text-sm font-medium text-gray-900 text-right max-w-xs">{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-6">
+                      {!selectedArtisan.isVerified && (
+                        <button onClick={() => handleVerifyArtisan(selectedArtisan._id)} className="px-4 py-2 bg-green-600 text-white text-sm rounded-xl hover:bg-green-700">Verify Artisan</button>
+                      )}
+                      <button onClick={() => handleSuspendUser(selectedArtisan._id)} className={`px-4 py-2 text-sm rounded-xl ${selectedArtisan.isSuspended ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'}`}>{selectedArtisan.isSuspended ? 'Unsuspend' : 'Suspend'}</button>
+                      <button onClick={() => handleLoginAs(selectedArtisan)} className="px-4 py-2 bg-indigo-50 text-indigo-700 text-sm rounded-xl flex items-center space-x-1 hover:bg-indigo-100"><FiLogIn className="h-3.5 w-3.5" /><span>Login As</span></button>
+                      <button onClick={() => handleDeleteUser(selectedArtisan._id)} className="px-4 py-2 bg-red-50 text-red-700 text-sm rounded-xl flex items-center space-x-1 hover:bg-red-100"><FiTrash2 className="h-3.5 w-3.5" /><span>Delete</span></button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {artisanDetailTab === 'finance' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Monthly Finance / Revenue</h1>
+                  {artisanStats ? (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[
+                          { label: 'Total Orders', value: artisanStats.total, color: 'bg-blue-50 text-blue-700' },
+                          { label: 'Delivered', value: artisanStats.delivered, color: 'bg-green-50 text-green-700' },
+                          { label: 'Cancelled', value: artisanStats.cancelled, color: 'bg-red-50 text-red-700' },
+                          { label: 'Pending', value: artisanStats.pending, color: 'bg-yellow-50 text-yellow-700' },
+                        ].map(s => (
+                          <div key={s.label} className={`${s.color} rounded-xl p-4 text-center`}>
+                            <p className="text-2xl font-bold">{s.value}</p>
+                            <p className="text-xs mt-1 opacity-80">{s.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-emerald-50 rounded-xl p-4">
+                          <div className="flex items-center space-x-2 mb-1"><RevenueIcon className="h-4 w-4 text-emerald-600" /><p className="text-xs text-emerald-600 font-medium">Total Revenue (Delivered only)</p></div>
+                          <p className="text-xl font-bold text-emerald-800">LKR {artisanStats.revenue?.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-purple-50 rounded-xl p-4">
+                          <div className="flex items-center space-x-2 mb-1"><RevenueIcon className="h-4 w-4 text-purple-600" /><p className="text-xs text-purple-600 font-medium">Platform Commission (10%)</p></div>
+                          <p className="text-xl font-bold text-purple-800">LKR {artisanStats.commission?.toLocaleString()}</p>
+                        </div>
+                      </div>
+                      {artisanStats.monthly?.length > 0 && (
+                        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                          <div className="p-4 border-b"><h3 className="font-semibold text-gray-900">Monthly Breakdown</h3></div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-50"><tr>{['Month', 'Orders', 'Qty', 'Revenue (LKR)', 'Commission (LKR)'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {artisanStats.monthly.map(m => (
+                                  <tr key={m.month} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium text-gray-900">{m.month}</td>
+                                    <td className="px-4 py-3 text-gray-600">{m.count}</td>
+                                    <td className="px-4 py-3 text-gray-600">{m.quantity}</td>
+                                    <td className="px-4 py-3 text-gray-900 font-bold">{m.revenue?.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-purple-700 font-medium">{m.commission?.toLocaleString()}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : <div className="bg-white rounded-2xl p-8 text-center text-gray-400">No financial data available.</div>}
+                </motion.div>
+              )}
+
+              {artisanDetailTab === 'all-orders' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">All Orders ({artisanOrderList.length})</h1>
+                  <OrderTable orders={artisanOrderList} statusColors={statusColors} onViewOrder={(o) => setSelectedModal({ type: 'order', data: o })} />
+                </motion.div>
+              )}
+
+              {artisanDetailTab === 'delivered' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Delivered Orders ({deliveredOrders.length})</h1>
+                  <OrderTable orders={deliveredOrders} statusColors={statusColors} onViewOrder={(o) => setSelectedModal({ type: 'order', data: o })} />
+                </motion.div>
+              )}
+
+              {artisanDetailTab === 'cancelled' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Cancelled Orders ({cancelledOrders.length})</h1>
+                  <OrderTable orders={cancelledOrders} statusColors={statusColors} onViewOrder={(o) => setSelectedModal({ type: 'order', data: o })} />
+                </motion.div>
+              )}
+
+              {artisanDetailTab === 'reviews' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Customer Reviews</h1>
+                  <div className="bg-white rounded-2xl shadow-sm p-6">
+                    {artisanStats?.reviews?.length > 0 ? (
+                      <div className="space-y-4">
+                        {artisanStats.reviews.map((review, idx) => (
+                          <div key={idx} className="p-4 bg-gray-50 rounded-xl">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="font-medium text-gray-900 text-sm">{review.buyer?.name || 'Buyer'}</p>
+                              <div className="flex items-center space-x-1">
+                                {[...Array(5)].map((_, i) => (
+                                  <FiStar key={i} className={`h-3.5 w-3.5 ${i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+                                ))}
+                              </div>
+                            </div>
+                            <p className="text-sm text-gray-600">{review.comment}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 text-gray-400">
+                        <FiMessageSquare className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                        <p>No reviews yet</p>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {artisanDetailTab === 'ratings' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Ratings</h1>
+                  <div className="bg-white rounded-2xl shadow-sm p-8 max-w-md">
+                    <div className="text-center py-4 mb-6">
+                      <div className="text-5xl font-bold text-gray-900 mb-2">
+                        {(artisanStats?.averageRating || selectedArtisan.artisanProfile?.rating?.average || 0).toFixed(1)}
+                      </div>
+                      <div className="flex justify-center space-x-1 mb-3">
+                        {[...Array(5)].map((_, i) => (
+                          <FiStar key={i} className={`h-6 w-6 ${i < Math.round(artisanStats?.averageRating || 0) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+                        ))}
+                      </div>
+                      <p className="text-sm text-gray-500">Based on {artisanStats?.total || 0} orders</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-indigo-50 rounded-xl p-3 text-center">
+                        <p className="text-lg font-bold text-indigo-700">{artisanStats?.delivered || 0}</p>
+                        <p className="text-xs text-indigo-500">Successful Deliveries</p>
+                      </div>
+                      <div className="bg-green-50 rounded-xl p-3 text-center">
+                        <p className="text-lg font-bold text-green-700">
+                          {artisanStats?.total ? Math.round((artisanStats.delivered / artisanStats.total) * 100) : 0}%
+                        </p>
+                        <p className="text-xs text-green-500">Completion Rate</p>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </>
+          )}
+        </main>
+
+        <AnimatePresence>
+          {selectedModal && (
+            <OrderModal order={selectedModal.data} onClose={() => setSelectedModal(null)} statusColors={statusColors} onUpdateStatus={handleUpdateOrderStatus} onRefund={handleRefund} />
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // ─── Buyer Detail View ────────────────────────────────────────────────────
+  if (selectedBuyer) {
+    const buyerOrderList = orders.filter(o =>
+      (o.buyer?._id || o.buyer?.id) === selectedBuyer._id
+    );
+
+    return (
+      <div className="min-h-screen bg-gray-100 flex">
+        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-indigo-900 to-indigo-800 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+          <div className="p-4 flex items-center justify-between border-b border-indigo-700">
+            {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-indigo-700 rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
+          </div>
+          {sidebarOpen && (
+            <div className="p-4 border-b border-indigo-700">
+              <button onClick={() => setSelectedBuyer(null)} className="flex items-center space-x-2 text-indigo-200 hover:text-white text-sm mb-3">
+                <FiArrowLeft className="h-4 w-4" /><span>Back to Buyers</span>
+              </button>
+              <p className="text-xs text-indigo-400 uppercase tracking-wider mb-1">Buyer</p>
+              <p className="font-semibold text-white text-sm">{selectedBuyer.name}</p>
+            </div>
+          )}
+          <nav className="p-4 space-y-1">
+            {navItems.map(item => (
+              <button key={item.id} onClick={() => { setSelectedBuyer(null); setActiveTab(item.id); }}
+                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-indigo-200 hover:bg-white/10 hover:text-white">
+                <item.icon className="h-4 w-4 flex-shrink-0" />
+                {sidebarOpen && <span>{item.label}</span>}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <main className={`${sidebarOpen ? 'ml-64' : 'ml-20'} flex-1 p-6 pt-8 transition-all duration-300`}>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">Buyer Profile</h1>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="bg-white rounded-2xl shadow-sm p-6">
+                <div className="text-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-2xl font-bold text-blue-600 mx-auto mb-3">{selectedBuyer.name?.[0]}</div>
+                  <h2 className="font-bold text-gray-900">{selectedBuyer.name}</h2>
+                  <p className="text-sm text-gray-500">{selectedBuyer.email}</p>
+                  <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-medium ${selectedBuyer.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{selectedBuyer.isSuspended ? 'Suspended' : 'Active'}</span>
+                </div>
+                {[['Phone', selectedBuyer.phone], ['Location', selectedBuyer.location], ['Joined', new Date(selectedBuyer.createdAt).toLocaleDateString()]].filter(([, v]) => v).map(([k, v]) => (
+                  <div key={k} className="flex justify-between py-2 border-b border-gray-50 text-sm">
+                    <span className="text-gray-500">{k}</span>
+                    <span className="font-medium text-gray-900">{v}</span>
+                  </div>
+                ))}
+                {selectedBuyer.buyerProfile?.shippingAddresses?.[0] && (
+                  <div className="mt-4 p-3 bg-blue-50 rounded-xl">
+                    <p className="text-xs font-medium text-blue-600 mb-1">Default Address</p>
+                    <p className="text-sm text-blue-900">{selectedBuyer.buyerProfile.shippingAddresses[0].address}, {selectedBuyer.buyerProfile.shippingAddresses[0].city}</p>
+                  </div>
+                )}
+                <div className="flex space-x-2 mt-4">
+                  <button onClick={() => handleSuspendUser(selectedBuyer._id)} className={`flex-1 py-2 text-xs rounded-xl ${selectedBuyer.isSuspended ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>{selectedBuyer.isSuspended ? 'Unsuspend' : 'Suspend'}</button>
+                  <button onClick={() => handleLoginAs(selectedBuyer)} className="flex-1 py-2 text-xs bg-indigo-50 text-indigo-700 rounded-xl flex items-center justify-center space-x-1"><FiLogIn className="h-3 w-3" /><span>Login As</span></button>
+                </div>
+              </div>
+              <div className="lg:col-span-2">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">Orders ({buyerOrderList.length})</h2>
+                {buyerOrderList.length === 0 ? (
+                  <div className="bg-white rounded-2xl shadow-sm p-8 text-center text-gray-400">
+                    <FiShoppingBag className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                    <p>No orders placed yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {buyerOrderList.map(order => (
+                      <div key={order._id} className="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">{order.orderId}</p>
+                          <p className="text-xs text-gray-500">→ {order.artisan?.name} · {new Date(order.createdAt).toLocaleDateString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-sm text-gray-900">LKR {order.totalAmount?.toLocaleString()}</p>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[order.orderStatus] || 'bg-gray-100 text-gray-600'}`}>{order.orderStatus?.replace(/_/g, ' ')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <h2 className="text-lg font-bold text-gray-900 mt-6 mb-4">Reviews</h2>
+                <div className="bg-white rounded-2xl shadow-sm p-6 text-center text-gray-400 text-sm">
+                  Reviews submitted by this buyer will appear here.
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </main>
+      </div>
+    );
+  }
+
+  // ─── Main Admin Dashboard ─────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-100 flex">
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-indigo-900 to-indigo-800 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
@@ -182,6 +589,7 @@ const AdminDashboard = () => {
 
       <main className={`${sidebarOpen ? 'ml-64' : 'ml-20'} flex-1 p-6 pt-8 transition-all duration-300 min-h-screen`}>
 
+        {/* Overview */}
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex justify-between items-center mb-8">
@@ -195,7 +603,7 @@ const AdminDashboard = () => {
                 { label: 'Total Users', value: stats.users?.total || 0, sub: `${stats.users?.artisans || 0} artisans, ${stats.users?.buyers || 0} buyers`, icon: FiUsers, color: 'from-blue-500 to-blue-600' },
                 { label: 'Products', value: stats.products?.total || 0, sub: `${stats.products?.active || 0} active`, icon: FiPackage, color: 'from-purple-500 to-purple-600' },
                 { label: 'Orders', value: stats.orders?.total || 0, sub: `${stats.orders?.pending || 0} pending`, icon: FiShoppingBag, color: 'from-orange-500 to-orange-600' },
-                { label: 'Total Revenue', value: `LKR ${((stats.orders?.revenue || 0) / 1000).toFixed(1)}K`, sub: 'Delivered orders', icon: FiTrendingUp, color: 'from-green-500 to-emerald-600' },
+                { label: 'Total Revenue', value: `LKR ${((stats.orders?.revenue || 0) / 1000).toFixed(1)}K`, sub: 'Delivered orders only', icon: RevenueIcon, color: 'from-green-500 to-emerald-600' },
               ].map((s, i) => (
                 <motion.div key={i} whileHover={{ y: -4 }} className="bg-white rounded-2xl p-6 shadow-sm">
                   <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${s.color} flex items-center justify-center mb-4`}><s.icon className="h-6 w-6 text-white" /></div>
@@ -205,40 +613,25 @@ const AdminDashboard = () => {
                 </motion.div>
               ))}
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white rounded-2xl shadow-sm p-6">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Orders</h2>
+            <div className="bg-white rounded-2xl shadow-sm p-6">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">Pending Artisan Verification</h2>
+              {users.filter(u => u.role === 'artisan' && !u.isVerified).length === 0 ? (
+                <div className="text-center py-8 text-gray-400"><FiCheckCircle className="h-10 w-10 mx-auto mb-2 text-green-400" /><p className="text-sm">All artisans verified!</p></div>
+              ) : (
                 <div className="space-y-3">
-                  {orders.slice(0, 6).map(order => (
-                    <div key={order._id} className="flex items-center justify-between">
-                      <div><p className="font-medium text-sm text-gray-900">{order.orderId}</p><p className="text-xs text-gray-500">{order.buyer?.name} → {order.artisan?.name}</p></div>
-                      <div className="text-right">
-                        <p className="font-bold text-sm text-gray-900">LKR {order.totalAmount?.toLocaleString()}</p>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[order.orderStatus] || 'bg-gray-100 text-gray-600'}`}>{order.orderStatus?.replace(/_/g, ' ')}</span>
-                      </div>
+                  {users.filter(u => u.role === 'artisan' && !u.isVerified).map(u => (
+                    <div key={u._id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
+                      <div><p className="font-medium text-sm text-gray-900">{u.name}</p><p className="text-xs text-gray-500">{u.email} · {u.artisanProfile?.businessName}</p></div>
+                      <button onClick={() => handleVerifyArtisan(u._id)} disabled={actionLoading === u._id} className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50">Verify</button>
                     </div>
                   ))}
                 </div>
-              </div>
-              <div className="bg-white rounded-2xl shadow-sm p-6">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">Pending Verification</h2>
-                {users.filter(u => u.role === 'artisan' && !u.isVerified).length === 0 ? (
-                  <div className="text-center py-8 text-gray-400"><FiCheckCircle className="h-10 w-10 mx-auto mb-2 text-green-400" /><p className="text-sm">All artisans verified!</p></div>
-                ) : (
-                  <div className="space-y-3">
-                    {users.filter(u => u.role === 'artisan' && !u.isVerified).map(u => (
-                      <div key={u._id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
-                        <div><p className="font-medium text-sm text-gray-900">{u.name}</p><p className="text-xs text-gray-500">{u.email} · {u.artisanProfile?.businessName}</p></div>
-                        <button onClick={() => handleVerifyArtisan(u._id)} disabled={actionLoading === u._id} className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50">Verify</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </motion.div>
         )}
 
+        {/* Buyers — each is a clickable button */}
         {activeTab === 'buyers' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex justify-between items-center mb-6">
@@ -252,18 +645,29 @@ const AdminDashboard = () => {
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
               <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search buyers..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-indigo-400 outline-none text-sm bg-white" />
             </div>
-            {buyerViewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {users.filter(u => u.role === 'buyer' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
-                  <UserCard key={u._id} u={u} role="buyer" onView={() => setSelectedModal({ type: 'user', data: u })} onSuspend={() => handleSuspendUser(u._id)} onDelete={() => handleDeleteUser(u._id)} onLoginAs={() => handleLoginAs(u)} actionLoading={actionLoading} />
-                ))}
-              </div>
-            ) : (
-              <UserTable users={users.filter(u => u.role === 'buyer')} searchTerm={searchTerm} setSearchTerm={setSearchTerm} onView={u => setSelectedModal({ type: 'user', data: u })} onSuspend={handleSuspendUser} onDelete={handleDeleteUser} onLoginAs={handleLoginAs} actionLoading={actionLoading} role="buyer" />
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {users.filter(u => u.role === 'buyer' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
+                <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => setSelectedBuyer(u)}
+                  className="bg-white rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-indigo-100">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-xl font-bold text-blue-600">{u.name?.[0]}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{u.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                    </div>
+                    <FiEye className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
+                    <span className="text-xs text-gray-400">{orders.filter(o => (o.buyer?._id || o.buyer?.id) === u._id).length} orders</span>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
           </motion.div>
         )}
 
+        {/* Artisans — each is a clickable button */}
         {activeTab === 'artisans' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <div className="flex justify-between items-center mb-6">
@@ -277,18 +681,41 @@ const AdminDashboard = () => {
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
               <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search artisans..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-indigo-400 outline-none text-sm bg-white" />
             </div>
-            {artisanViewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {users.filter(u => u.role === 'artisan' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
-                  <UserCard key={u._id} u={u} role="artisan" onView={() => setSelectedModal({ type: 'user', data: u })} onViewStats={() => openArtisanStats(u)} onVerify={() => handleVerifyArtisan(u._id)} onSuspend={() => handleSuspendUser(u._id)} onDelete={() => handleDeleteUser(u._id)} onLoginAs={() => handleLoginAs(u)} actionLoading={actionLoading} />
-                ))}
-              </div>
-            ) : (
-              <UserTable users={users.filter(u => u.role === 'artisan')} searchTerm={searchTerm} setSearchTerm={setSearchTerm} onView={u => setSelectedModal({ type: 'user', data: u })} onVerify={handleVerifyArtisan} onSuspend={handleSuspendUser} onDelete={handleDeleteUser} onLoginAs={handleLoginAs} onViewStats={openArtisanStats} actionLoading={actionLoading} role="artisan" />
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {users.filter(u => u.role === 'artisan' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
+                <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => openArtisanDetail(u)}
+                  className="bg-white rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-amber-100">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-600">{u.name?.[0]}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{u.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{u.artisanProfile?.businessName || u.email}</p>
+                    </div>
+                    <FiEye className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isVerified ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{u.isVerified ? '✓ Verified' : 'Pending'}</span>
+                  </div>
+                  {u.artisanProfile?.stats && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div className="bg-gray-50 p-2 rounded-lg text-center">
+                        <p className="text-[10px] text-gray-500 uppercase">Revenue</p>
+                        <p className="text-xs font-bold text-gray-900">LKR {(u.artisanProfile.stats.totalRevenue || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gray-50 p-2 rounded-lg text-center">
+                        <p className="text-[10px] text-gray-500 uppercase">Orders</p>
+                        <p className="text-xs font-bold text-gray-900">{u.artisanProfile.stats.totalOrders || 0}</p>
+                      </div>
+                    </div>
+                  )}
+                </motion.button>
+              ))}
+            </div>
           </motion.div>
         )}
 
+        {/* Products */}
         {activeTab === 'products' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-2xl font-bold text-gray-900 mb-6">Products Management</h1>
@@ -320,286 +747,90 @@ const AdminDashboard = () => {
             </div>
           </motion.div>
         )}
-
-        {activeTab === 'orders' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Orders Management</h1>
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <div className="p-4 border-b"><div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search orders..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-indigo-400 outline-none text-sm" /></div></div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50"><tr>{['Order ID', 'Buyer', 'Artisan', 'Amount', 'Payment', 'Status', 'Date', 'Actions'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {orders.filter(o => !searchTerm || o.orderId?.toLowerCase().includes(searchTerm.toLowerCase()) || o.buyer?.name?.toLowerCase().includes(searchTerm.toLowerCase())).map(order => (
-                      <tr key={order._id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">{order.orderId}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{order.buyer?.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{order.artisan?.name}</td>
-                        <td className="px-4 py-3 text-sm font-bold text-gray-900">LKR {order.totalAmount?.toLocaleString()}</td>
-                        <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${order.paymentStatus === 'completed' ? 'bg-green-100 text-green-700' : order.paymentStatus === 'refunded' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{order.paymentStatus || 'pending'}</span></td>
-                        <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[order.orderStatus] || 'bg-gray-100 text-gray-600'}`}>{order.orderStatus?.replace(/_/g, ' ')}</span></td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{new Date(order.createdAt).toLocaleDateString()}</td>
-                        <td className="px-4 py-3"><div className="flex items-center space-x-2">
-                          <button onClick={() => setSelectedModal({ type: 'order', data: order })} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><FiEye className="h-3.5 w-3.5" /></button>
-                          {order.paymentStatus !== 'refunded' && <button onClick={() => handleRefund(order._id)} className="px-2 py-1 text-xs bg-red-50 text-red-600 hover:bg-red-100 rounded-lg">Refund</button>}
-                        </div></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </motion.div>
-        )}
       </main>
 
       <AnimatePresence>
         {selectedModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setSelectedModal(null)}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
-              <div className="p-6 border-b flex justify-between items-center sticky top-0 bg-white rounded-t-2xl">
-                <h2 className="text-lg font-bold text-gray-900">{selectedModal.type === 'user' ? 'User Details' : 'Order Details'}</h2>
-                <button onClick={() => setSelectedModal(null)} className="p-2 hover:bg-gray-100 rounded-full"><FiX /></button>
-              </div>
-              <div className="p-6">
-                {selectedModal.type === 'user' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-2xl font-bold text-indigo-600">{selectedModal.data.name?.[0]}</div>
-                      <div>
-                        <p className="text-xl font-bold text-gray-900">{selectedModal.data.name}</p>
-                        <p className="text-gray-500 text-sm">{selectedModal.data.email}</p>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${selectedModal.data.role === 'artisan' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{selectedModal.data.role}</span>
-                      </div>
-                    </div>
-                    {[['Phone', selectedModal.data.phone], ['Location', selectedModal.data.location], ['Joined', new Date(selectedModal.data.createdAt).toLocaleDateString()], ['Status', selectedModal.data.isSuspended ? '⛔ Suspended' : '✅ Active'], ['Verified', selectedModal.data.isVerified ? '✅ Yes' : '❌ No']].map(([k, v]) => v && (
-                      <div key={k} className="flex justify-between py-2 border-b"><span className="text-sm text-gray-500">{k}</span><span className="text-sm font-medium text-gray-900">{v}</span></div>
-                    ))}
-                    {selectedModal.data.role === 'artisan' && selectedModal.data.artisanProfile?.businessName && (
-                      <div className="mt-4 p-4 bg-amber-50 rounded-xl">
-                        <p className="font-semibold text-amber-900">{selectedModal.data.artisanProfile.businessName}</p>
-                        <p className="text-sm text-amber-700 mt-1">{selectedModal.data.artisanProfile.description}</p>
-                      </div>
-                    )}
-                    {selectedModal.data.role === 'buyer' && selectedModal.data.buyerProfile?.shippingAddresses?.[0] && (
-                      <div className="mt-4 p-4 bg-blue-50 rounded-xl">
-                        <p className="text-xs font-medium text-blue-600 mb-2 font-mono uppercase tracking-wider">Default Shipping Address</p>
-                        <p className="text-sm text-blue-900 font-bold">{selectedModal.data.buyerProfile.shippingAddresses[0].name}</p>
-                        <p className="text-sm text-blue-800">{selectedModal.data.buyerProfile.shippingAddresses[0].address}</p>
-                        <p className="text-sm text-blue-800">{selectedModal.data.buyerProfile.shippingAddresses[0].city}, {selectedModal.data.buyerProfile.shippingAddresses[0].state}</p>
-                      </div>
-                    )}
-                    {selectedModal.data.role !== 'admin' && (
-                      <button onClick={() => { setSelectedModal(null); handleLoginAs(selectedModal.data); }} className="w-full mt-4 flex items-center justify-center space-x-2 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium">
-                        <FiLogIn className="h-4 w-4" /><span>Login as {selectedModal.data.name}</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-                {selectedModal.type === 'order' && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      {[['Order ID', selectedModal.data.orderId], ['Amount', `LKR ${selectedModal.data.totalAmount?.toLocaleString()}`], ['Buyer', selectedModal.data.buyer?.name], ['Artisan', selectedModal.data.artisan?.name], ['Status', selectedModal.data.orderStatus?.replace(/_/g, ' ')], ['Payment', selectedModal.data.paymentStatus], ['Date', new Date(selectedModal.data.createdAt).toLocaleString()]].map(([k, v]) => (
-                        <div key={k}><p className="text-xs text-gray-500">{k}</p><p className="font-medium text-gray-900 text-sm">{v}</p></div>
-                      ))}
-                    </div>
-
-                    <div className="border-t pt-4">
-                      <p className="text-xs font-medium text-gray-600 mb-3 font-mono uppercase tracking-wider">Order Items</p>
-                      <div className="space-y-3">
-                        {selectedModal.data.items?.map((item, idx) => (
-                          <div key={idx} className="flex items-center space-x-3 bg-gray-50 p-2 rounded-xl border border-gray-100">
-                            <img src={item.product?.images?.[0]?.url || 'https://via.placeholder.com/50'} className="w-12 h-12 rounded-lg object-cover" alt="" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-gray-900 truncate">{item.product?.name}</p>
-                              <p className="text-xs text-gray-500">Qty: {item.quantity} × LKR {item.price?.toLocaleString()}</p>
-                              {item.customization?.options?.length > 0 && (
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {item.customization.options.map((opt, oidx) => (
-                                    <span key={oidx} className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">{opt.name}: {opt.value}</span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <p className="text-sm font-bold text-gray-900">LKR {item.totalPrice?.toLocaleString()}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {selectedModal.data.shippingAddress && (
-                      <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                        <p className="text-xs font-medium text-gray-600 mb-2">SHIPPING ADDRESS</p>
-                        <p className="text-sm text-gray-900">{selectedModal.data.shippingAddress.name}</p>
-                        <p className="text-sm text-gray-600">{selectedModal.data.shippingAddress.address}</p>
-                        <p className="text-sm text-gray-600">{selectedModal.data.shippingAddress.city}, {selectedModal.data.shippingAddress.district}</p>
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-xs font-medium text-gray-600 mb-2">UPDATE STATUS</p>
-                      <select onChange={e => { handleUpdateOrderStatus(selectedModal.data._id, e.target.value); setSelectedModal(null); }} defaultValue="" className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-indigo-400 outline-none bg-white text-sm">
-                        <option value="" disabled>Select new status...</option>
-                        {['pending', 'confirmed', 'processing', 'order ready', 'shipped', 'delivered', 'cancelled'].map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {artisanStatsModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setArtisanStatsModal(null)}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
-              <div className="p-6 border-b flex justify-between items-center sticky top-0 bg-white rounded-t-2xl">
-                <div><h2 className="text-lg font-bold text-gray-900">{artisanStatsModal.name} — Financial Board</h2><p className="text-xs text-gray-500">{artisanStatsModal.artisanProfile?.businessName}</p></div>
-                <button onClick={() => setArtisanStatsModal(null)} className="p-2 hover:bg-gray-100 rounded-full"><FiX /></button>
-              </div>
-              <div className="p-6">
-                {loadingArtisanStats ? (
-                  <div className="text-center py-12"><div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-500 border-t-transparent mx-auto mb-3" /><p className="text-gray-500 text-sm">Loading stats...</p></div>
-                ) : artisanStats ? (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {[{ label: 'Total Orders', value: artisanStats.total, color: 'bg-blue-50 text-blue-700' }, { label: 'Delivered', value: artisanStats.delivered, color: 'bg-green-50 text-green-700' }, { label: 'Cancelled', value: artisanStats.cancelled, color: 'bg-red-50 text-red-700' }, { label: 'Pending', value: artisanStats.pending, color: 'bg-yellow-50 text-yellow-700' }].map(s => (
-                        <div key={s.label} className={`${s.color} rounded-xl p-4 text-center`}><p className="text-2xl font-bold">{s.value}</p><p className="text-xs mt-1 opacity-80">{s.label}</p></div>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-emerald-50 rounded-xl p-4"><p className="text-xs text-emerald-600 font-medium">Total Revenue</p><p className="text-xl font-bold text-emerald-800">LKR {artisanStats.revenue?.toLocaleString()}</p></div>
-                      <div className="bg-purple-50 rounded-xl p-4"><p className="text-xs text-purple-600 font-medium">Platform Commission (10%)</p><p className="text-xl font-bold text-purple-800">LKR {artisanStats.commission?.toLocaleString()}</p></div>
-                    </div>
-                    {artisanStats.monthly?.length > 0 && (
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-3 flex items-center justify-between">
-                          <span>Monthly Breakdown</span>
-                          <span className="text-xs font-normal text-gray-400 font-mono">FINANCIAL RECORDS</span>
-                        </h3>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="bg-gray-50"><tr>{['Month', 'Orders', 'Qty', 'Revenue (LKR)', 'Commission (LKR)'].map(h => <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-500">{h}</th>)}</tr></thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {artisanStats.monthly.map(m => (
-                                <tr key={m.month} className="hover:bg-gray-50">
-                                  <td className="px-3 py-2 font-medium text-gray-900">{m.month}</td>
-                                  <td className="px-3 py-2 text-gray-600">{m.count}</td>
-                                  <td className="px-3 py-2 text-gray-600">{m.quantity}</td>
-                                  <td className="px-3 py-2 text-gray-900 font-bold">{m.revenue?.toLocaleString()}</td>
-                                  <td className="px-3 py-2 text-purple-700 font-medium">{m.commission?.toLocaleString()}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {artisanStats.products?.length > 0 && (
-                      <div className="mt-8">
-                        <h3 className="font-semibold text-gray-900 mb-4 flex items-center justify-between">
-                          <span>Products List</span>
-                          <span className="text-xs font-normal text-gray-400 font-mono italic">FETCHED FROM STORE</span>
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {artisanStats.products.map(p => (
-                            <div key={p._id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                              <img src={p.images?.[0]?.url || 'https://via.placeholder.com/50'} className="w-12 h-12 rounded-lg object-cover" alt="" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-gray-900 truncate">{p.name}</p>
-                                <p className="text-[10px] text-gray-500 uppercase tracking-tighter">{p.category}</p>
-                                <div className="flex items-center mt-1 space-x-2 text-xs">
-                                  <span className="text-indigo-600 font-bold">LKR {p.price?.toLocaleString()}</span>
-                                  <span className="text-gray-400">·</span>
-                                  <span className={p.stock > 10 ? 'text-green-600' : 'text-orange-600'}>{p.stock} in stock</span>
-                                </div>
-                              </div>
-                              <span className={`w-2 h-2 rounded-full ${p.isActive ? 'bg-green-500' : 'bg-gray-300'}`} title={p.isActive ? 'Active' : 'Inactive'} />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : <p className="text-center text-gray-500 py-8">No data available</p>}
-              </div>
-            </motion.div>
-          </motion.div>
+          <OrderModal order={selectedModal.data} onClose={() => setSelectedModal(null)} statusColors={statusColors} onUpdateStatus={handleUpdateOrderStatus} onRefund={handleRefund} />
         )}
       </AnimatePresence>
     </div>
   );
 };
 
-const UserCard = ({ u, role, onView, onViewStats, onVerify, onSuspend, onDelete, onLoginAs, actionLoading }) => (
-  <div className="bg-white rounded-2xl shadow-sm p-5 hover:shadow-md transition-shadow">
-    <div className="flex items-center space-x-3 mb-3">
-      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${role === 'artisan' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>{u.name?.[0]}</div>
-      <div className="flex-1 min-w-0"><p className="font-semibold text-gray-900 truncate">{u.name}</p><p className="text-xs text-gray-500 truncate">{role === 'artisan' ? (u.artisanProfile?.businessName || u.email) : u.email}</p></div>
+// ── Reusable Order Table ──────────────────────────────────────────────────────
+const OrderTable = ({ orders, statusColors, onViewOrder }) => {
+  if (!orders || orders.length === 0) return (
+    <div className="bg-white rounded-2xl shadow-sm p-8 text-center text-gray-400">
+      <FiShoppingBag className="h-10 w-10 mx-auto mb-2 opacity-30" />
+      <p>No orders found</p>
     </div>
-    <div className="flex flex-wrap gap-1 mb-2">
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
-      {role === 'artisan' && <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isVerified ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{u.isVerified ? '✓ Verified' : 'Pending'}</span>}
-    </div>
-    {role === 'artisan' && u.artisanProfile?.stats && (
-      <div className="grid grid-cols-2 gap-2 my-1">
-        <div className="bg-gray-50 p-2 rounded-lg text-center">
-          <p className="text-[10px] text-gray-500 uppercase">Rev.</p>
-          <p className="text-xs font-bold text-gray-900">LKR {u.artisanProfile.stats.totalRevenue?.toLocaleString()}</p>
-        </div>
-        <div className="bg-gray-50 p-2 rounded-lg text-center">
-          <p className="text-[10px] text-gray-500 uppercase">Orders</p>
-          <p className="text-xs font-bold text-gray-900">{u.artisanProfile.stats.totalOrders || 0}</p>
-        </div>
-      </div>
-    )}
-    {u.location && <p className="text-xs text-gray-400 mb-2">📍 {u.location}</p>}
-    <div className="flex items-center flex-wrap gap-1 mt-3">
-      <button onClick={onView} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg" title="View"><FiEye className="h-3.5 w-3.5" /></button>
-      {role === 'artisan' && onViewStats && <button onClick={onViewStats} className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg" title="Stats"><FiBarChart2 className="h-3.5 w-3.5" /></button>}
-      {role === 'artisan' && !u.isVerified && <button onClick={onVerify} disabled={actionLoading === u._id} className="px-2 py-1 text-xs bg-green-50 text-green-700 hover:bg-green-100 rounded-lg disabled:opacity-50">Verify</button>}
-      <button onClick={onSuspend} disabled={actionLoading === u._id} className={`px-2 py-1 text-xs rounded-lg ${u.isSuspended ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>{u.isSuspended ? 'Unsuspend' : 'Suspend'}</button>
-      <button onClick={onLoginAs} className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg" title="Login as"><FiLogIn className="h-3.5 w-3.5" /></button>
-      <button onClick={onDelete} disabled={actionLoading === u._id} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><FiTrash2 className="h-3.5 w-3.5" /></button>
-    </div>
-  </div>
-);
-
-const UserTable = ({ users, searchTerm, setSearchTerm, onView, onVerify, onSuspend, onDelete, onLoginAs, onViewStats, actionLoading, role }) => {
-  const filtered = users.filter(u => !searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()));
+  );
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      <div className="p-4 border-b flex items-center justify-between">
-        <div className="relative max-w-md flex-1"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={`Search ${role}s...`} className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-indigo-400 outline-none text-sm" /></div>
-        <span className="ml-4 text-sm text-gray-500">{filtered.length} {role}s</span>
-      </div>
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50"><tr>{['Name', 'Email', 'Location', role === 'artisan' ? 'Revenue' : 'Joined', 'Status', 'Actions'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
+          <thead className="bg-gray-50"><tr>{['Order ID', 'Buyer', 'Amount', 'Status', 'Date', ''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-gray-100">
-            {filtered.map(u => (
-              <tr key={u._id} className="hover:bg-gray-50">
-                <td className="px-4 py-3"><div className="flex items-center space-x-3"><div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-600">{u.name?.[0]}</div><p className="font-medium text-sm text-gray-900">{u.name}</p></div></td>
-                <td className="px-4 py-3 text-sm text-gray-600">{u.email}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{u.location || '—'}</td>
-                <td className="px-4 py-3 text-sm font-bold text-gray-700">{role === 'artisan' ? `LKR ${u.artisanProfile?.stats?.totalRevenue?.toLocaleString() || 0}` : new Date(u.createdAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3 font-medium"><div className="flex flex-col space-y-1"><span className={`px-2 py-0.5 rounded-full text-xs w-fit font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>{role === 'artisan' && <span className={`px-2 py-0.5 rounded-full text-xs w-fit font-medium ${u.isVerified ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{u.isVerified ? 'Verified' : 'Pending'}</span>}</div></td>
-                <td className="px-4 py-3"><div className="flex items-center space-x-2">
-                  <button onClick={() => onView(u)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><FiEye className="h-3.5 w-3.5" /></button>
-                  {role === 'artisan' && onViewStats && <button onClick={() => onViewStats(u)} className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg" title="Stats"><FiBarChart2 className="h-3.5 w-3.5" /></button>}
-                  {role === 'artisan' && !u.isVerified && <button onClick={() => onVerify(u._id)} disabled={actionLoading === u._id} className="px-2 py-1 text-xs bg-green-50 text-green-700 hover:bg-green-100 rounded-lg disabled:opacity-50">Verify</button>}
-                  <button onClick={() => onSuspend(u._id)} disabled={actionLoading === u._id} className={`px-2 py-1 text-xs rounded-lg ${u.isSuspended ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'}`}>{u.isSuspended ? 'Unsuspend' : 'Suspend'}</button>
-                  {onLoginAs && <button onClick={() => onLoginAs(u)} className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg" title="Login as"><FiLogIn className="h-3.5 w-3.5" /></button>}
-                  <button onClick={() => onDelete(u._id)} disabled={actionLoading === u._id} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><FiTrash2 className="h-3.5 w-3.5" /></button>
-                </div></td>
+            {orders.map(order => (
+              <tr key={order._id} className="hover:bg-gray-50">
+                <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">{order.orderId}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{order.buyer?.name}</td>
+                <td className="px-4 py-3 text-sm font-bold text-gray-900">LKR {order.totalAmount?.toLocaleString()}</td>
+                <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[order.orderStatus] || 'bg-gray-100 text-gray-600'}`}>{order.orderStatus?.replace(/_/g, ' ')}</span></td>
+                <td className="px-4 py-3 text-xs text-gray-500">{new Date(order.createdAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3"><button onClick={() => onViewOrder(order)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><FiEye className="h-3.5 w-3.5" /></button></td>
               </tr>
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 && <div className="text-center py-12 text-gray-400">No {role}s found</div>}
       </div>
     </div>
   );
 };
+
+// ── Order Modal ───────────────────────────────────────────────────────────────
+const OrderModal = ({ order, onClose, statusColors, onUpdateStatus, onRefund }) => (
+  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+    <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+      <div className="p-6 border-b flex justify-between items-center sticky top-0 bg-white rounded-t-2xl">
+        <h2 className="text-lg font-bold text-gray-900">Order Details</h2>
+        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><FiX /></button>
+      </div>
+      <div className="p-6 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          {[['Order ID', order.orderId], ['Amount', `LKR ${order.totalAmount?.toLocaleString()}`], ['Buyer', order.buyer?.name], ['Artisan', order.artisan?.name], ['Status', order.orderStatus?.replace(/_/g, ' ')], ['Payment', order.paymentStatus], ['Date', new Date(order.createdAt).toLocaleString()]].map(([k, v]) => (
+            <div key={k}><p className="text-xs text-gray-500">{k}</p><p className="font-medium text-gray-900 text-sm">{v}</p></div>
+          ))}
+        </div>
+        <div className="border-t pt-4">
+          <p className="text-xs font-medium text-gray-600 mb-3 uppercase tracking-wider">Order Items</p>
+          <div className="space-y-3">
+            {order.items?.map((item, idx) => (
+              <div key={idx} className="flex items-center space-x-3 bg-gray-50 p-2 rounded-xl">
+                <img src={item.product?.images?.[0]?.url || 'https://via.placeholder.com/50'} className="w-12 h-12 rounded-lg object-cover" alt="" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-900 truncate">{item.product?.name}</p>
+                  <p className="text-xs text-gray-500">Qty: {item.quantity} × LKR {item.price?.toLocaleString()}</p>
+                </div>
+                <p className="text-sm font-bold text-gray-900">LKR {item.totalPrice?.toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-gray-600 mb-2 uppercase">Update Status</p>
+          <select onChange={e => { onUpdateStatus(order._id, e.target.value); onClose(); }} defaultValue="" className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-indigo-400 outline-none bg-white text-sm">
+            <option value="" disabled>Select new status...</option>
+            {['pending', 'confirmed', 'processing', 'order ready', 'shipped', 'delivered', 'cancelled'].map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+          </select>
+        </div>
+        {order.paymentStatus !== 'refunded' && (
+          <button onClick={() => { onRefund(order._id); onClose(); }} className="w-full py-2.5 bg-red-50 text-red-600 text-sm rounded-xl hover:bg-red-100">Process Refund</button>
+        )}
+      </div>
+    </motion.div>
+  </motion.div>
+);
 
 export default AdminDashboard;

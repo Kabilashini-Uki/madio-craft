@@ -34,6 +34,13 @@ const ProductCustomizationModal = ({ product, onClose }) => {
     }
     setSending(true);
     try {
+      // Send customization request notification to artisan via API
+      await api.post(`/products/${product._id}/customization-request`, {
+        color: selectedColor,
+        size: selectedSize,
+        notes: description,
+      });
+
       const message = `
 Customization Request for: ${product.name}
 ${selectedColor ? `Color: ${selectedColor}` : ''}
@@ -41,21 +48,24 @@ ${selectedSize ? `Size: ${selectedSize}` : ''}
 ${description ? `Additional Details: ${description}` : ''}
       `.trim();
 
-      // Try to create a chat room with the artisan
-      const res = await api.post('/chat/rooms', {
-        artisanId: product.artisan?._id,
-        productId: product._id,
-        type: 'customization',
-        initialMessage: message
-      });
-
-      toast.success('Customization request sent!');
-      onClose();
-      if (res.data?.room?._id || res.data?._id) {
-        navigate(`/chat/${res.data?.room?._id || res.data?._id}`);
+      // Also try to create a chat room for follow-up
+      try {
+        const res = await api.post('/chat/rooms', {
+          artisanId: product.artisan?._id,
+          productId: product._id,
+          type: 'customization',
+          initialMessage: message
+        });
+        toast.success('Customization request sent! The artisan will be notified.');
+        onClose();
+        if (res.data?.room?._id || res.data?._id) {
+          navigate(`/chat/${res.data?.room?._id || res.data?._id}`);
+        }
+      } catch {
+        toast.success('Customization request sent! The artisan will be notified.');
+        onClose();
       }
     } catch (error) {
-      // Fallback: just show success since chat might not be available
       toast.success('Customization request noted! The artisan will contact you.');
       onClose();
     } finally {

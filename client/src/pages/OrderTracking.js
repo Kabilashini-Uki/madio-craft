@@ -6,7 +6,7 @@ import {
   FiPackage, FiTruck, FiCheckCircle, FiClock,
   FiArrowLeft, FiMapPin, FiCalendar, FiUser
 } from 'react-icons/fi';
-import axios from 'axios';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
@@ -23,14 +23,7 @@ const OrderTracking = () => {
 
   const fetchOrder = async () => {
     try {
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/orders/${orderId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          }
-        }
-      );
+      const response = await api.get(`/orders/${orderId}`);
       setOrder(response.data.order);
     } catch (error) {
       console.error('Error fetching order:', error);

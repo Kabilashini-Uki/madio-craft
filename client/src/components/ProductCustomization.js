@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { useCart } from '../context/CartContext';
-import axios from 'axios';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 const ProductCustomization = ({ product, isOpen, onClose }) => {
@@ -108,8 +108,8 @@ const ProductCustomization = ({ product, isOpen, onClose }) => {
       const uploads = await Promise.all(files.map(async (file) => {
         const fd = new FormData();
         fd.append('image', file);
-        const res = await axios.post(`${process.env.REACT_APP_API_URL}/upload`, fd, {
-          headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${localStorage.getItem('token')}` }
+        const res = await api.post('/upload', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
         return { url: res.data.url, name: file.name };
       }));

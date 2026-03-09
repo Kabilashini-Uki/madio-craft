@@ -3,10 +3,11 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiShoppingCart, FiUser, FiMenu, FiX, FiLogOut,
-  FiSettings, FiPackage, FiHeart, FiChevronDown
+  FiSettings, FiPackage, FiHeart, FiChevronDown, FiRefreshCw
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import api from '../services/api';
 import NotificationBell from './NotificationBell';
 
 const Navbar = () => {
@@ -43,6 +44,25 @@ const Navbar = () => {
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const handleSwitchRole = async () => {
+    try {
+      const originalRole = user?.originalRole || user?.role;
+      const isInBuyerMode = user?.activeRole === 'buyer' || (user?.originalRole && user?.role === 'buyer');
+      const mode = isInBuyerMode ? 'original' : 'buyer';
+      const res = await api.post('/auth/switch-role', { mode });
+      if (res.data.success) {
+        // Update localStorage and reload
+        const stored = JSON.parse(localStorage.getItem('user') || '{}');
+        const updated = { ...stored, ...res.data.user };
+        localStorage.setItem('user', JSON.stringify(updated));
+        localStorage.setItem('token', res.data.token);
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error('Switch role failed:', err);
+    }
   };
 
   const navLinks = [
@@ -127,7 +147,7 @@ const Navbar = () => {
                       <div className="px-4 py-3 border-b border-gray-100">
                         <p className="font-semibold text-gray-900">{user.name}</p>
                         <p className="text-xs text-gray-500">{user.email}</p>
-                        <span className="inline-block mt-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full capitalize">{user.role}</span>
+                        <span className="inline-block mt-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full capitalize">{user.activeRole === 'buyer' && user.originalRole ? `${user.originalRole} (buyer mode)` : user.role}</span>
                       </div>
                       <div className="py-1">
                         <Link to="/dashboard" className="flex items-center space-x-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
@@ -145,6 +165,15 @@ const Navbar = () => {
                           </Link>
                         )}
                       </div>
+                      {(user.originalRole || ['artisan','admin'].includes(user.role)) && user.role !== 'buyer' || user.originalRole ? (
+                        <div className="border-t border-gray-100 pt-1">
+                          <button onClick={handleSwitchRole}
+                            className="flex items-center space-x-3 px-4 py-2.5 text-blue-600 hover:bg-blue-50 w-full transition-colors">
+                            <FiRefreshCw className="h-4 w-4" />
+                            <span>{(user.activeRole === 'buyer' || (user.originalRole && user.role === 'buyer')) ? `Switch back to ${user.originalRole}` : 'Switch to Buyer mode'}</span>
+                          </button>
+                        </div>
+                      ) : null}
                       <div className="border-t border-gray-100 pt-1">
                         <button onClick={handleLogout}
                           className="flex items-center space-x-3 px-4 py-2.5 text-red-600 hover:bg-red-50 w-full transition-colors">

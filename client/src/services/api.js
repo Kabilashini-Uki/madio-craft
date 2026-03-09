@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // Prefer explicit REACT_APP_API_URL. If not provided, fall back to localhost:5000/api (backend default).
 // If your backend runs on a different port, set REACT_APP_API_URL in the client .env (e.g. REACT_APP_API_URL=http://localhost:5000/api)
-const API_URL = process.env.REACT_APP_API_URL;
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 console.log('🌐 API Base URL:', API_URL);
 

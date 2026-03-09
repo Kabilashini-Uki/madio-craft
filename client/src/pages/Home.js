@@ -12,13 +12,11 @@ import {
   FiTrendingUp,
   FiUsers
 } from 'react-icons/fi';
-import axios from 'axios';
+import api from '../services/api';
 import ProductCard from '../components/ProductCard'; // ADD THIS IMPORT
 
 const Home = () => {
   const [products, setProducts] = useState([]);
-  const [mostSold, setMostSold] = useState([]);
-  const [mostSearched, setMostSearched] = useState([]);
   const [artisans, setArtisans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [artisanCount, setArtisanCount] = useState(0);
@@ -32,19 +30,14 @@ const Home = () => {
   const fetchData = async () => {
     try {
       const [productsRes, artisansRes, countRes] = await Promise.all([
-        axios.get(`${process.env.REACT_APP_API_URL}/products?limit=200`),
-        axios.get(`${process.env.REACT_APP_API_URL}/artisans?limit=4`),
-        axios.get(`${process.env.REACT_APP_API_URL}/artisans?limit=1000`)
+        api.get('/products?limit=200'),
+        api.get('/artisans?limit=4'),
+        api.get('/artisans?limit=1000')
       ]);
       const prods = productsRes.data.products || [];
       const sorted = [...prods].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       setProducts(sorted.slice(0, 6));
-      // Most sold: sort by soldCount or ratings.count desc
-      const sold = [...prods].sort((a, b) => (b.soldCount || b.ratings?.count || 0) - (a.soldCount || a.ratings?.count || 0));
-      setMostSold(sold.slice(0, 6));
-      // Most searched: sort by views or ratings.average * ratings.count
-      const searched = [...prods].sort((a, b) => ((b.views || 0) + (b.ratings?.average || 0) * 10) - ((a.views || 0) + (a.ratings?.average || 0) * 10));
-      setMostSearched(searched.slice(0, 6));
+
       setArtisans(artisansRes.data.artisans || []);
       const total = countRes.data.total || countRes.data.artisans?.length || 0;
       setArtisanCount(total);
@@ -256,50 +249,6 @@ const Home = () => {
           )}
         </div>
       </section>
-
-      {/* Most Sold Products */}
-      {mostSold.length > 0 && (
-        <section className="py-20 bg-amber-50">
-          <div className="container mx-auto px-4">
-            <div className="flex justify-between items-center mb-10">
-              <div>
-                <span className="text-amber-600 font-semibold text-sm uppercase tracking-wider">Best Sellers</span>
-                <h2 className="text-3xl font-serif font-bold text-gray-900 mt-2">Most Sold</h2>
-              </div>
-              <button onClick={() => navigate('/products?sort=-soldCount')} className="text-amber-600 hover:text-amber-700 font-medium flex items-center space-x-1">
-                <span>See all</span><FiArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {mostSold.map((product, index) => (
-                <ProductCard key={product._id} product={product} />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Most Searched Products */}
-      {mostSearched.length > 0 && (
-        <section className="py-20 bg-white">
-          <div className="container mx-auto px-4">
-            <div className="flex justify-between items-center mb-10">
-              <div>
-                <span className="text-indigo-600 font-semibold text-sm uppercase tracking-wider">Trending</span>
-                <h2 className="text-3xl font-serif font-bold text-gray-900 mt-2">Most Popular</h2>
-              </div>
-              <button onClick={() => navigate('/products?sort=-views')} className="text-indigo-600 hover:text-indigo-700 font-medium flex items-center space-x-1">
-                <span>See all</span><FiArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {mostSearched.map((product, index) => (
-                <ProductCard key={product._id} product={product} />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* Categories Section */}
       <section className="py-24 bg-white">

@@ -84,6 +84,9 @@ export const NotifProvider = ({ children }) => {
               Order <span className="font-semibold">#{data.orderId}</span> is now{' '}
               <span className="font-semibold text-blue-700 capitalize">{data.status}</span>
             </p>
+            {data.status === 'order ready' && (
+              <p className="text-xs text-indigo-600 mt-1 font-medium">⚠️ You can no longer cancel this order.</p>
+            )}
           </div>
         ),
         { duration: 5000, position: 'top-right' }
@@ -114,7 +117,50 @@ export const NotifProvider = ({ children }) => {
       );
     };
 
-    // Chat: new message (existing feature, now stored in list too)
+    // Artisan: buyer sent customization request
+    const handleCustomizationRequest = (data) => {
+      addNotification({
+        type: 'customization-request',
+        title: 'Customization Request',
+        body: `${data.buyerName} requested customization for ${data.productName}`,
+        icon: '🎨',
+        productId: data.productId,
+        buyerId: data.buyerId,
+      });
+      toast.custom(
+        (t) => (
+          <div className={`bg-white border-l-4 border-purple-500 rounded-xl shadow-xl p-4 max-w-sm w-full cursor-pointer ${t.visible ? 'opacity-100' : 'opacity-0'}`}
+            onClick={() => toast.dismiss(t.id)}>
+            <p className="font-bold text-gray-900 text-sm">🎨 Customization Request</p>
+            <p className="text-xs text-gray-600 mt-1">{data.buyerName} wants to customize <span className="font-semibold">{data.productName}</span></p>
+          </div>
+        ),
+        { duration: 7000, position: 'top-right' }
+      );
+    };
+
+    // Buyer: artisan responded to customization
+    const handleCustomizationResponse = (data) => {
+      addNotification({
+        type: 'customization-response',
+        title: data.available ? 'Customization Available!' : 'Customization Unavailable',
+        body: data.available ? `Your customization for ${data.productName} is available. You can now place the order!` : `Artisan cannot fulfill your customization for ${data.productName}.`,
+        icon: data.available ? '✅' : '❌',
+        productId: data.productId,
+      });
+      toast.custom(
+        (t) => (
+          <div className={`bg-white border-l-4 border-${data.available ? 'green' : 'red'}-500 rounded-xl shadow-xl p-4 max-w-sm w-full cursor-pointer ${t.visible ? 'opacity-100' : 'opacity-0'}`}
+            onClick={() => toast.dismiss(t.id)}>
+            <p className="font-bold text-gray-900 text-sm">{data.available ? '✅' : '❌'} Customization {data.available ? 'Available' : 'Unavailable'}</p>
+            <p className="text-xs text-gray-600 mt-1">{data.available ? 'You can now place your customized order!' : `The artisan cannot fulfill this customization.`}</p>
+          </div>
+        ),
+        { duration: 7000, position: 'top-right' }
+      );
+    };
+
+    // Chat: new message
     const handleChatMessage = (data) => {
       addNotification({
         type: 'chat',
@@ -128,12 +174,16 @@ export const NotifProvider = ({ children }) => {
     socket.on('new-order', handleNewOrder);
     socket.on('order-status-update', handleStatusUpdate);
     socket.on('order-cancelled', handleOrderCancelled);
+    socket.on('customization-request', handleCustomizationRequest);
+    socket.on('customization-response', handleCustomizationResponse);
     socket.on('new-message-notification', handleChatMessage);
 
     return () => {
       socket.off('new-order', handleNewOrder);
       socket.off('order-status-update', handleStatusUpdate);
       socket.off('order-cancelled', handleOrderCancelled);
+      socket.off('customization-request', handleCustomizationRequest);
+      socket.off('customization-response', handleCustomizationResponse);
       socket.off('new-message-notification', handleChatMessage);
     };
   }, [socket, addNotification]);

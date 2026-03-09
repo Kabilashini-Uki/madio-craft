@@ -12,13 +12,9 @@ import { useCart } from '../context/CartContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
-// Sri Lanka districts
-const SRI_LANKA_DISTRICTS = [
-  'Ampara', 'Anuradhapura', 'Badulla', 'Batticaloa', 'Colombo', 'Galle', 
-  'Gampaha', 'Hambantota', 'Jaffna', 'Kalutara', 'Kandy', 'Kegalle', 
-  'Kilinochchi', 'Kurunegala', 'Mannar', 'Matale', 'Matara', 'Moneragala', 
-  'Mullaitivu', 'Nuwara Eliya', 'Polonnaruwa', 'Puttalam', 'Ratnapura', 
-  'Trincomalee', 'Vavuniya'
+// Delivery locations
+const DELIVERY_LOCATIONS = [
+  'Eravur', 'Marudhamunai', 'Valaichenai', 'Ottamavadi', 'Kaatankudy'
 ];
 
 const SimpleCheckout = () => {
@@ -26,6 +22,14 @@ const SimpleCheckout = () => {
   const { user } = useAuth();
   const { cartItems, cartSummary, clearCart } = useCart();
   
+  // Block artisans and admins from placing orders
+  useEffect(() => {
+    if (user && (user.role === 'artisan' || user.role === 'admin')) {
+      toast.error('Artisans and admins cannot place orders.');
+      navigate('/');
+    }
+  }, [user]);
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
@@ -36,7 +40,7 @@ const SimpleCheckout = () => {
     name: user?.name || '',
     address: '',
     city: '',
-    district: 'Colombo',
+    district: '',
     zipCode: '',
     phone: user?.phone || '',
     email: user?.email || ''
@@ -282,8 +286,9 @@ const SimpleCheckout = () => {
                       required
                     >
                       <option value="">Select District</option>
-                      {SRI_LANKA_DISTRICTS.map(district => (
-                        <option key={district} value={district}>{district}</option>
+                      <option value="">Select your location</option>
+                      {DELIVERY_LOCATIONS.map(loc => (
+                        <option key={loc} value={loc}>{loc}</option>
                       ))}
                     </select>
                   </div>

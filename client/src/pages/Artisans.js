@@ -11,14 +11,12 @@ import {
   FiFilter,
   FiChevronRight,
   FiHeart,
-  FiMail,
   FiTool,
   FiShield,
   FiArrowRight,
   FiPackage,
   FiX,
   FiClock,
-  FiSend
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -159,10 +157,10 @@ const Artisans = () => {
   const filteredArtisans = artisans.filter(artisan => {
     const matchesCategory = selectedCategory === 'all' || 
       (artisan.craftCategory || '').toLowerCase() === selectedCategory.toLowerCase() ||
-      (artisan.specialties && artisan.specialties.some(s => s.toLowerCase().includes(selectedCategory.toLowerCase())));
+      (artisan.artisanProfile?.specialties || artisan.specialties || []).some(s => s.toLowerCase().includes(selectedCategory.toLowerCase()));
     
-    const matchesLocation = selectedLocation === 'all' || 
-      (artisan.location || '').toLowerCase().includes(selectedLocation.toLowerCase());
+    const artisanLoc = (artisan.location || artisan.artisanProfile?.location || '').toLowerCase();
+    const matchesLocation = selectedLocation === 'all' || artisanLoc === selectedLocation.toLowerCase();
     
     return matchesCategory && matchesLocation;
   });
@@ -406,8 +404,8 @@ const Artisans = () => {
                   {/* Actions */}
                   <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                     <div className="flex items-center text-gray-500">
-                      <FiUsers className="h-4 w-4 mr-1" />
-                      <span className="text-sm">{(artisan.followerCount || 0).toLocaleString()} followers</span>
+                      <FiMapPin className="h-4 w-4 mr-1 text-amber-600" />
+                      <span className="text-sm font-medium">{artisan.location || artisan.artisanProfile?.location || 'Location not set'}</span>
                     </div>
                     
                     <div className="flex space-x-2">

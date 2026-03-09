@@ -3,22 +3,33 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiPackage, FiShoppingBag, FiUser, FiSettings, FiLogOut,
-  FiDollarSign, FiTrendingUp, FiClock, FiCheckCircle, FiTruck,
+  FiTrendingUp, FiClock, FiCheckCircle, FiTruck,
   FiHome, FiStar, FiMessageCircle, FiEdit, FiPlus, FiImage,
   FiX, FiUpload, FiEye, FiToggleLeft, FiToggleRight, FiTrash2,
   FiInstagram, FiFacebook, FiGlobe, FiCamera, FiAward, FiZap,
   FiCheck, FiAlertCircle, FiRefreshCw, FiChevronDown, FiLink,
-  FiGrid, FiList, FiLogIn, FiBarChart2, FiDownload
+  FiGrid, FiList, FiLogIn, FiBarChart2, FiDownload, FiMessageSquare, FiTool
 } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotif } from '../context/NotifContext';
+import { useSocket } from '../context/SocketContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+
+// Revenue Icon (receipt/bill style — replaces dollar sign)
+const RevenueIcon = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+  </svg>
+);
 
 const CATEGORIES = ['jewelry', 'pottery', 'textiles', 'woodwork', 'metalwork', 'glass', 'other'];
 
 const ArtisanDashboard = () => {
   const { user, logout, updateUser } = useAuth();
+  const { notifications } = useNotif();
+  const { socket } = useSocket();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [orders, setOrders] = useState([]);
@@ -50,6 +61,7 @@ const ArtisanDashboard = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [loadingFinancials, setLoadingFinancials] = useState(false);
+  const [customizationRequests, setCustomizationRequests] = useState([]);
 
   const handleLoginAsBuyer = async () => {
     try {
@@ -57,6 +69,31 @@ const ArtisanDashboard = () => {
       // Just navigate to home as buyer mode hint — proper impersonation needs admin
       toast('As artisan you can browse the store from the View Shop link below.', { icon: '💡' });
     } catch (e) { }
+  };
+
+  // Handle incoming customization requests from buyers
+  useEffect(() => {
+    if (!socket) return;
+    const handleCustomizationRequest = (data) => {
+      setCustomizationRequests(prev => [{ ...data, id: Date.now(), status: 'pending' }, ...prev]);
+    };
+    socket.on('customization-request', handleCustomizationRequest);
+    return () => socket.off('customization-request', handleCustomizationRequest);
+  }, [socket]);
+
+  const handleCustomizationResponse = async (request, available) => {
+    try {
+      await api.post(`/products/${request.productId}/customization-response`, {
+        available,
+        buyerId: request.buyerId,
+      });
+      setCustomizationRequests(prev => prev.map(r =>
+        r.id === request.id ? { ...r, status: available ? 'accepted' : 'rejected' } : r
+      ));
+      toast.success(available ? 'Accepted! Buyer has been notified.' : 'Buyer notified of unavailability.');
+    } catch (e) {
+      toast.error('Failed to respond');
+    }
   };
 
   const fetchFinancials = async () => {
@@ -195,7 +232,7 @@ const ArtisanDashboard = () => {
     { id: 'overview', label: 'Overview', icon: FiHome },
     { id: 'products', label: 'My Products', icon: FiPackage },
     { id: 'orders', label: 'Orders', icon: FiShoppingBag },
-    { id: 'financials', label: 'Financials', icon: FiTrendingUp },
+    { id: 'financials', label: 'Financials', icon: RevenueIcon },
     { id: 'portfolio', label: 'Portfolio', icon: FiAward },
     { id: 'profile', label: 'Profile', icon: FiUser },
   ];
@@ -204,40 +241,38 @@ const ArtisanDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 min-h-screen bg-white shadow-lg flex-shrink-0 fixed left-0 top-20 z-10">
+        <aside className="w-64 min-h-screen bg-gradient-to-b from-amber-900 to-amber-800 text-white flex-shrink-0 fixed left-0 top-20 z-10">
           <div className="p-6">
             <div className="flex items-center space-x-3 mb-8">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-lg">
                 {user?.name?.[0] || 'A'}
               </div>
               <div>
-                <p className="font-semibold text-gray-900 text-sm">{user?.name}</p>
-                <p className="text-xs text-gray-500">Artisan</p>
+                <p className="font-semibold text-amber-100 text-sm">{user?.name}</p>
+                <p className="text-xs text-amber-300">Artisan</p>
               </div>
             </div>
             <nav className="space-y-1">
               {navItems.map(item => (
                 <button key={item.id} onClick={() => setActiveTab(item.id)}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${activeTab === item.id
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-white/20 text-white shadow-md'
+                    : 'text-amber-200 hover:bg-white/10 hover:text-white'
                     }`}>
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>
                 </button>
               ))}
               <button onClick={() => { navigate('/'); }}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 mt-2">
+                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-amber-200 hover:bg-white/10 hover:text-white mt-2">
                 <FiGlobe className="h-4 w-4" /><span>View Shop</span>
               </button>
-              <button onClick={() => navigate('/')}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-indigo-600 hover:bg-indigo-50 mt-1">
-                <FiLogIn className="h-4 w-4" /><span>Browse as Buyer</span>
-              </button>
-              <button onClick={() => { logout(); navigate('/login'); }}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 mt-2">
-                <FiLogOut className="h-4 w-4" /><span>Logout</span>
-              </button>
+              <div className="border-t border-amber-700 pt-2 mt-4">
+                <button onClick={() => { logout(); navigate('/login'); }}
+                  className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-red-300 hover:bg-red-900/30">
+                  <FiLogOut className="h-4 w-4" /><span>Logout</span>
+                </button>
+              </div>
             </nav>
           </div>
         </aside>
@@ -255,7 +290,7 @@ const ArtisanDashboard = () => {
                 {[
                   { label: 'Total Orders', value: stats.totalOrders, icon: FiShoppingBag, color: 'from-blue-500 to-blue-600' },
                   { label: 'Pending', value: stats.pendingOrders, icon: FiClock, color: 'from-yellow-500 to-orange-500' },
-                  { label: 'Revenue', value: `Rs. ${stats.revenue.toLocaleString()}`, icon: FiDollarSign, color: 'from-green-500 to-emerald-600' },
+                  { label: 'Revenue', value: `Rs. ${stats.revenue.toLocaleString()}`, icon: RevenueIcon, color: 'from-green-500 to-emerald-600' },
                   { label: 'Active Products', value: stats.activeProducts, icon: FiPackage, color: 'from-purple-500 to-purple-600' },
                 ].map((s, i) => (
                   <div key={i} className="bg-white rounded-2xl p-6 shadow-sm">
@@ -288,10 +323,52 @@ const ArtisanDashboard = () => {
                     </div>
                 }
               </div>
+
+              {/* Customization Requests Panel */}
+              {customizationRequests.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-sm p-6 mt-6">
+                  <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center space-x-2">
+                    <FiTool className="h-5 w-5 text-purple-500" />
+                    <span>Customization Requests</span>
+                    <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">{customizationRequests.filter(r => r.status === 'pending').length} pending</span>
+                  </h2>
+                  <div className="space-y-3">
+                    {customizationRequests.map(request => (
+                      <div key={request.id} className={`p-4 rounded-xl border ${request.status === 'pending' ? 'bg-purple-50 border-purple-100' : request.status === 'accepted' ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900 text-sm">{request.buyerName}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{request.productName}</p>
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {request.color && <span className="text-xs bg-white px-2 py-0.5 rounded-full border">🎨 {request.color}</span>}
+                              {request.size && <span className="text-xs bg-white px-2 py-0.5 rounded-full border">📏 {request.size}</span>}
+                              {request.notes && <span className="text-xs text-gray-500">{request.notes}</span>}
+                            </div>
+                          </div>
+                          {request.status === 'pending' ? (
+                            <div className="flex space-x-2 ml-4">
+                              <button onClick={() => handleCustomizationResponse(request, true)}
+                                className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700">
+                                Available ✓
+                              </button>
+                              <button onClick={() => handleCustomizationResponse(request, false)}
+                                className="px-3 py-1.5 bg-red-50 text-red-600 text-xs rounded-lg hover:bg-red-100">
+                                Unavailable ✗
+                              </button>
+                            </div>
+                          ) : (
+                            <span className={`text-xs px-2 py-1 rounded-full ${request.status === 'accepted' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {request.status === 'accepted' ? '✓ Accepted' : '✗ Rejected'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
-
-          {/* Products Tab */}
           {activeTab === 'products' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <div className="flex justify-between items-center mb-6">
@@ -800,7 +877,7 @@ const ArtisanDashboard = () => {
                         <p className="text-gray-600 mt-2 max-w-lg">{user?.bio}</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       <div className="p-4 bg-amber-50 rounded-xl text-center">
                         <div className="text-2xl font-bold text-amber-600">{user?.artisanProfile?.yearsOfExperience || 0}</div>
                         <div className="text-xs text-gray-500">Years Experience</div>
@@ -813,9 +890,39 @@ const ArtisanDashboard = () => {
                         <div className="text-2xl font-bold text-amber-600">{orders.length}</div>
                         <div className="text-xs text-gray-500">Orders</div>
                       </div>
-                      <div className="p-4 bg-amber-50 rounded-xl text-center">
-                        <div className="text-2xl font-bold text-amber-600">{user?.artisanProfile?.ratings?.average || '—'}</div>
-                        <div className="text-xs text-gray-500">Rating</div>
+                    </div>
+                    {/* Chat Section in Profile */}
+                    <div className="mt-6 border-t pt-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+                        <FiMessageSquare className="h-5 w-5 text-amber-500" />
+                        <span>Order Chats</span>
+                      </h3>
+                      <div className="space-y-3">
+                        {orders.filter(o => o.chatRoom).length === 0 ? (
+                          <div className="bg-gray-50 rounded-xl p-6 text-center text-gray-400">
+                            <FiMessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                            <p className="text-sm">No active chats yet. Chats appear when orders have a chat room.</p>
+                          </div>
+                        ) : (
+                          orders.filter(o => o.chatRoom).slice(0, 5).map(order => (
+                            <Link key={order._id} to={`/chat/${order.chatRoom}`}
+                              className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-amber-50 transition-colors">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-sm font-bold text-amber-600">
+                                  {order.buyer?.name?.[0] || '?'}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">{order.buyer?.name}</p>
+                                  <p className="text-xs text-gray-500">{order.orderId}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${order.orderStatus === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{order.orderStatus?.replace(/_/g, ' ')}</span>
+                                <FiMessageCircle className="h-4 w-4 text-amber-500" />
+                              </div>
+                            </Link>
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>
