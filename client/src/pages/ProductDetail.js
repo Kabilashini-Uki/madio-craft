@@ -1,6 +1,6 @@
 // pages/ProductDetail.js - FIXED VERSION
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api';
 import {
   FaStar,
@@ -19,12 +19,18 @@ import toast from 'react-hot-toast';
 import ProductCustomization from '../components/ProductCustomization';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useNotif } from '../context/NotifContext';
 
 const ProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { addToCart, isInWishlist, addToWishlist, removeFromWishlist } = useCart();
+  const { isCustomizationApproved, approvedCustomizations, getCustomizationData } = useNotif();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isCustomizeMode = searchParams.get('customize') === 'true';
+  const customizeRequestId = searchParams.get('requestId');
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -70,8 +76,6 @@ const ProductDetail = () => {
             (prod.image ? [{ url: prod.image }] : [])),
         stock: Number(prod.stock) || 0,
         ratings: prod.ratings || { average: 0, count: 0, reviews: [] },
-        materials: Array.isArray(prod.materials) ? prod.materials :
-          (prod.materials ? [prod.materials] : []),
         isCustomizable: !!prod.isCustomizable,
         category: prod.category || 'other',
         artisan: prod.artisan || prod.seller || {},
@@ -317,7 +321,7 @@ const ProductDetail = () => {
                 </div>
                 <span className="text-gray-400">•</span>
                 <span className={`font-semibold ${product.stock > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {product.stock > 0 ? 'In Stock' : 'Out of Stock'}
+                  {product.stock === 0 ? 'Out of Stock' : product.stock <= 10 ? `Only ${product.stock} left!` : `In Stock (${product.stock})`}
                 </span>
               </div>
 
@@ -422,13 +426,43 @@ const ProductDetail = () => {
               )}
 
               {product.isCustomizable && product.stock > 0 && (
-                <button
-                  onClick={handleCustomizeClick}
-                  className="w-full mt-4 bg-white border-2 border-primary text-primary hover:bg-primary hover:text-white py-3 rounded-full font-semibold transition-colors flex items-center justify-center space-x-2"
-                >
-                  <FiMessageCircle className="h-5 w-5" />
-                  <span>✨ Customize with Artisan</span>
-                </button>
+                (() => {
+                  const custData = getCustomizationData ? getCustomizationData(product._id) : null;
+                  const approved = isCustomizationApproved(product._id);
+                  if (approved || isCustomizeMode) {
+                    const price = custData?.customizationPrice || 0;
+                    return (
+                      <div className="mt-4 space-y-3">
+                        <div className="w-full py-3 px-4 bg-green-50 border-2 border-green-200 rounded-2xl">
+                          <p className="text-green-700 text-sm font-bold flex items-center gap-2">✅ Customization Accepted!</p>
+                          {price > 0 && <p className="text-green-800 text-lg font-extrabold mt-1">Rs. {price.toLocaleString()}</p>}
+                          {custData?.color && <p className="text-xs text-gray-600 mt-1">🎨 Color: {custData.color}</p>}
+                          {custData?.size  && <p className="text-xs text-gray-600">📐 Size: {custData.size}</p>}
+                          {custData?.notes && <p className="text-xs text-gray-600">📝 {custData.notes}</p>}
+                        </div>
+                        <button
+                          onClick={() => {
+                            const reqId = custData?.requestId || customizeRequestId;
+                            navigate(`/checkout?productId=${product._id}&customization=true&requestId=${reqId}&price=${price}&qty=${quantity}`);
+                          }}
+                          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-4 rounded-full font-bold text-lg transition-colors flex items-center justify-center space-x-2 hover:shadow-lg"
+                        >
+                          <FaShoppingCart className="h-5 w-5" />
+                          <span>🛒 Order Now — Customized</span>
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      onClick={handleCustomizeClick}
+                      className="w-full mt-4 bg-white border-2 border-primary text-primary hover:bg-primary hover:text-white py-3 rounded-full font-semibold transition-colors flex items-center justify-center space-x-2"
+                    >
+                      <FiMessageCircle className="h-5 w-5" />
+                      <span>✨ Request Customization</span>
+                    </button>
+                  );
+                })()
               )}
             </div>
 

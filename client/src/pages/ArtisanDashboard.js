@@ -8,12 +8,14 @@ import {
   FiX, FiUpload, FiEye, FiToggleLeft, FiToggleRight, FiTrash2,
   FiInstagram, FiFacebook, FiGlobe, FiCamera, FiAward, FiZap,
   FiCheck, FiAlertCircle, FiRefreshCw, FiChevronDown, FiLink,
-  FiGrid, FiList, FiLogIn, FiBarChart2, FiDownload, FiMessageSquare, FiTool
+  FiGrid, FiList, FiLogIn, FiBarChart2, FiDownload, FiMessageSquare, FiTool,
+  FiMenu, FiShoppingCart
 } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotif } from '../context/NotifContext';
 import { useSocket } from '../context/SocketContext';
+import NotificationBell from '../components/NotificationBell';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -32,6 +34,7 @@ const ArtisanDashboard = () => {
   const { socket } = useSocket();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
@@ -57,6 +60,10 @@ const ArtisanDashboard = () => {
     }
   });
   const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const avatarInputRef = React.useRef(null);
+  const coverInputRef = React.useRef(null);
   const [orderViewMode, setOrderViewMode] = useState('list');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [financials, setFinancials] = useState(null);
@@ -75,7 +82,18 @@ const ArtisanDashboard = () => {
   useEffect(() => {
     if (!socket) return;
     const handleCustomizationRequest = (data) => {
-      setCustomizationRequests(prev => [{ ...data, id: Date.now(), status: 'pending' }, ...prev]);
+      // New payload shape: { requestId, sender:{id,name,avatar}, product:{id,name,image}, ... }
+      setCustomizationRequests(prev => [{
+        ...data,
+        id:        Date.now(),
+        // Normalise legacy fields for dashboard display
+        requestId: data.requestId,
+        productId: data.product?.id   || data.productId,
+        productName: data.product?.name || data.productName,
+        buyerId:   data.sender?.id    || data.buyerId,
+        buyerName: data.sender?.name  || data.buyerName,
+        status:    'pending',
+      }, ...prev]);
     };
     socket.on('customization-request', handleCustomizationRequest);
     return () => socket.off('customization-request', handleCustomizationRequest);
@@ -83,10 +101,35 @@ const ArtisanDashboard = () => {
 
   const handleCustomizationResponse = async (request, available) => {
     try {
-      await api.post(`/products/${request.productId}/customization-response`, {
-        available,
-        buyerId: request.buyerId,
-      });
+      if (request.isChatRequest) {
+        // This is a message-based request — notify buyer via socket directly
+        const io_roomId = request.roomId || request.requestId;
+        const buyerId = request.buyerId || request.sender?.id;
+        if (socket && buyerId) {
+          socket.emit('chat-request-response', {
+            buyerId,
+            artisanId: user?._id || user?.id,
+            artisanName: user?.name,
+            roomId: io_roomId,
+            available,
+            status: available ? 'accepted' : 'rejected',
+          });
+        }
+        // Also emit via backend for persistence
+        if (buyerId) {
+          try {
+            await api.post('/chat/request-response', {
+              buyerId, available, roomId: io_roomId,
+            });
+          } catch { /* non-critical */ }
+        }
+      } else {
+        await api.post(`/products/${request.productId || request.product?.id}/customization-response`, {
+          available,
+          buyerId:   request.buyerId || request.sender?.id,
+          requestId: request.requestId,
+        });
+      }
       setCustomizationRequests(prev => prev.map(r =>
         r.id === request.id ? { ...r, status: available ? 'accepted' : 'rejected' } : r
       ));
@@ -147,19 +190,31 @@ const ArtisanDashboard = () => {
   }, []);
 
   const fetchOrders = async () => {
+    setLoadingOrders(true);
     try {
       const res = await api.get('/orders/artisan-orders');
-      setOrders(res.data.orders || []);
-    } catch (e) { console.error(e); }
-    finally { setLoadingOrders(false); }
+      // Handle both {orders:[...]} and direct array responses
+      const ordersData = res.data?.orders || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      setOrders(ordersData);
+    } catch (e) {
+      console.error('Failed to load orders:', e);
+      toast.error('Failed to load orders');
+      setOrders([]);
+    } finally { setLoadingOrders(false); }
   };
 
   const fetchProducts = async () => {
+    setLoadingProducts(true);
     try {
       const res = await api.get('/products/my');
-      setProducts(res.data.products || []);
-    } catch (e) { console.error(e); }
-    finally { setLoadingProducts(false); }
+      // Handle both {products:[...]} and direct array responses
+      const productsData = res.data?.products || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      setProducts(productsData);
+    } catch (e) {
+      console.error('Failed to load products:', e);
+      toast.error('Failed to load products');
+      setProducts([]);
+    } finally { setLoadingProducts(false); }
   };
 
   const handleUpdateOrderStatus = async (orderId, status) => {
@@ -185,6 +240,51 @@ const ArtisanDashboard = () => {
       toast.success('Product deleted');
       fetchProducts();
     } catch (e) { toast.error('Failed to delete product'); }
+  };
+
+  const handleUploadAvatar = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return; }
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('avatar', file);
+      const res = await api.post('/users/avatar', fd);
+      if (res.data.success) {
+        updateUser(res.data.user);
+        // Force avatar re-render by updating local state
+        toast.success('Profile photo updated!');
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed to upload photo');
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const handleUploadCover = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error('Image must be under 8MB'); return; }
+    setUploadingCover(true);
+    try {
+      const fd = new FormData();
+      fd.append('coverImage', file);
+      const res = await api.post('/users/cover', fd);
+      if (res.data.success) {
+        updateUser(res.data.user);
+        toast.success('Cover image updated!');
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed to upload cover');
+    } finally {
+      setUploadingCover(false);
+      if (coverInputRef.current) coverInputRef.current.value = '';
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -233,52 +333,79 @@ const ArtisanDashboard = () => {
     { id: 'products', label: 'My Products', icon: FiPackage },
     { id: 'orders', label: 'Orders', icon: FiShoppingBag },
     { id: 'financials', label: 'Financials', icon: RevenueIcon },
-    { id: 'portfolio', label: 'Portfolio', icon: FiAward },
     { id: 'profile', label: 'Profile', icon: FiUser },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-amber-50/30">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 min-h-screen bg-gradient-to-b from-amber-900 to-amber-800 text-white flex-shrink-0 fixed left-0 top-20 z-10">
-          <div className="p-6">
-            <div className="flex items-center space-x-3 mb-8">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-lg">
-                {user?.name?.[0] || 'A'}
+        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-amber-900 to-amber-800 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+          <div className="p-4 flex items-center justify-between border-b border-amber-800 h-16">
+            {sidebarOpen && <h1 className="text-lg font-bold text-amber-100">Artisan Panel</h1>}
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-amber-800 rounded-lg ml-auto">
+              <FiMenu className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="p-4">
+            {sidebarOpen && (
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-base flex-shrink-0">
+                  {user?.name?.[0] || 'A'}
+                </div>
+                <div>
+                  <p className="font-semibold text-amber-100 text-sm">{user?.name}</p>
+                  <p className="text-xs text-amber-300">Artisan</p>
+                </div>
               </div>
-              <div>
-                <p className="font-semibold text-amber-100 text-sm">{user?.name}</p>
-                <p className="text-xs text-amber-300">Artisan</p>
-              </div>
-            </div>
+            )}
             <nav className="space-y-1">
               {navItems.map(item => (
                 <button key={item.id} onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${activeTab === item.id
+                  className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-2'} py-3 rounded-xl text-sm font-medium transition-all ${activeTab === item.id
                     ? 'bg-white/20 text-white shadow-md'
                     : 'text-amber-200 hover:bg-white/10 hover:text-white'
-                    }`}>
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                    }`}
+                  title={!sidebarOpen ? item.label : undefined}>
+                  <item.icon className="h-4 w-4 flex-shrink-0" />
+                  {sidebarOpen && <span>{item.label}</span>}
                 </button>
               ))}
               <button onClick={() => { navigate('/'); }}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-amber-200 hover:bg-white/10 hover:text-white mt-2">
-                <FiGlobe className="h-4 w-4" /><span>View Shop</span>
+                className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-2'} py-3 rounded-xl text-sm font-medium text-amber-200 hover:bg-white/10 hover:text-white mt-2`}
+                title={!sidebarOpen ? 'View Shop' : undefined}>
+                <FiGlobe className="h-4 w-4 flex-shrink-0" />{sidebarOpen && <span>View Shop</span>}
               </button>
               <div className="border-t border-amber-700 pt-2 mt-4">
                 <button onClick={() => { logout(); navigate('/login'); }}
-                  className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-red-300 hover:bg-red-900/30">
-                  <FiLogOut className="h-4 w-4" /><span>Logout</span>
+                  className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-2'} py-3 rounded-xl text-sm font-medium text-red-300 hover:bg-red-900/30`}
+                  title={!sidebarOpen ? 'Logout' : undefined}>
+                  <FiLogOut className="h-4 w-4 flex-shrink-0" />{sidebarOpen && <span>Logout</span>}
                 </button>
               </div>
             </nav>
           </div>
         </aside>
 
+        {/* Main Content Area */}
+        <div className={`${sidebarOpen ? 'ml-64' : 'ml-20'} flex-1 flex flex-col transition-all duration-300`}>
+          {/* Top Header Bar */}
+          <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-10 shadow-sm">
+            <h2 className="text-gray-700 font-semibold capitalize">{navItems.find(n => n.id === activeTab)?.label || 'Dashboard'}</h2>
+            <div className="flex items-center space-x-3">
+              {/* Add Product button */}
+              <button onClick={() => setShowProductModal(true)}
+                className="flex items-center space-x-1 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl text-sm font-medium transition-colors">
+                <FiPlus className="h-4 w-4" />
+                <span>Add Product</span>
+              </button>
+              {/* Notification Bell */}
+              <NotificationBell />
+            </div>
+          </header>
+
         {/* Main content */}
-        <main className="ml-64 flex-1 p-8 pt-28">
+        <main className="flex-1 p-8">
           {/* Overview */}
           {activeTab === 'overview' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -310,7 +437,7 @@ const ArtisanDashboard = () => {
                   orders.length === 0 ? <div className="text-gray-400 text-center py-8">No orders yet</div> :
                     <div className="space-y-3">
                       {orders.slice(0, 5).map(order => (
-                        <div key={order._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                        <div key={order._id} className="flex items-center justify-between p-4 bg-amber-50/60 rounded-xl">
                           <div>
                             <p className="font-medium text-gray-900 text-sm">{order.orderId}</p>
                             <p className="text-xs text-gray-500">by {order.buyer?.name} · Rs. {order.finalAmount?.toLocaleString()}</p>
@@ -324,51 +451,120 @@ const ArtisanDashboard = () => {
                 }
               </div>
 
-              {/* Customization Requests Panel */}
+              {/* Customisation Requests Panel */}
               {customizationRequests.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-sm p-6 mt-6">
-                  <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center space-x-2">
-                    <FiTool className="h-5 w-5 text-purple-500" />
-                    <span>Customization Requests</span>
-                    <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">{customizationRequests.filter(r => r.status === 'pending').length} pending</span>
-                  </h2>
-                  <div className="space-y-3">
-                    {customizationRequests.map(request => (
-                      <div key={request.id} className={`p-4 rounded-xl border ${request.status === 'pending' ? 'bg-purple-50 border-purple-100' : request.status === 'accepted' ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="font-medium text-gray-900 text-sm">{request.buyerName}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">{request.productName}</p>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {request.color && <span className="text-xs bg-white px-2 py-0.5 rounded-full border">🎨 {request.color}</span>}
-                              {request.size && <span className="text-xs bg-white px-2 py-0.5 rounded-full border">📏 {request.size}</span>}
-                              {request.notes && <span className="text-xs text-gray-500">{request.notes}</span>}
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden mt-6">
+                  <div className="px-6 py-4 flex items-center gap-3" style={{ background: 'linear-gradient(90deg,#7c3aed,#9333ea)' }}>
+                    <FiTool className="h-5 w-5 text-white" />
+                    <span className="font-bold text-white">Customisation Requests</span>
+                    {customizationRequests.filter(r => r.status === 'pending').length > 0 && (
+                      <span className="ml-auto px-2.5 py-0.5 bg-white/20 text-white text-xs rounded-full font-semibold">
+                        {customizationRequests.filter(r => r.status === 'pending').length} pending
+                      </span>
+                    )}
+                  </div>
+                  <div className="divide-y divide-gray-50">
+                    {customizationRequests.map(request => {
+                      // Support both old and new payload shapes
+                      const senderName   = request.sender?.name  || request.buyerName  || 'Buyer';
+                      const senderAvatar = request.sender?.avatar || '';
+                      const productName  = request.product?.name || request.productName || 'Product';
+                      const productImage = request.product?.image || '';
+                      const requestMsg   = request.message || '';
+                      const requestTime  = request.timestamp
+                        ? new Date(request.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+                        : '';
+                      const statusCfg = {
+                        pending:  { label: 'Pending',  cls: 'bg-yellow-100 text-yellow-700' },
+                        accepted: { label: 'Accepted', cls: 'bg-green-100  text-green-700'  },
+                        rejected: { label: 'Declined', cls: 'bg-red-100    text-red-700'    },
+                      }[request.status] || { label: request.status, cls: 'bg-gray-100 text-gray-500' };
+
+                      return (
+                        <div key={request.id} className={`p-5 ${request.status === 'pending' ? 'bg-violet-50/40' : 'bg-white'}`}>
+                          <div className="flex items-start gap-3">
+                            {/* Sender avatar */}
+                            {senderAvatar ? (
+                              <img src={senderAvatar} alt={senderName} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                                {senderName[0]?.toUpperCase() || 'B'}
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              {/* Sender + status row */}
+                              <div className="flex items-center justify-between gap-2 mb-0.5">
+                                <p className="font-semibold text-gray-900 text-sm">{senderName}</p>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusCfg.cls}`}>
+                                  {statusCfg.label}
+                                </span>
+                              </div>
+
+                              {/* Timestamp */}
+                              {requestTime && (
+                                <p className="text-[10px] text-gray-400 mb-2">{requestTime}</p>
+                              )}
+
+                              {/* Product */}
+                              <div className="flex items-center gap-2 mb-2 bg-violet-50 rounded-xl p-2">
+                                {productImage && (
+                                  <img src={productImage} alt={productName} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="text-[10px] text-gray-500">Product</p>
+                                  <p className="text-xs font-semibold text-gray-800 truncate">{productName}</p>
+                                </div>
+                              </div>
+
+                              {/* Message */}
+                              {requestMsg && (
+                                <p className="text-xs text-gray-600 mb-2 italic">"{requestMsg}"</p>
+                              )}
+
+                              {/* Detail chips */}
+                              <div className="flex flex-wrap gap-1.5 mb-3">
+                                {request.color && (
+                                  <span className="px-2.5 py-1 bg-violet-100 text-violet-700 rounded-full text-[11px] font-semibold">🎨 {request.color}</span>
+                                )}
+                                {request.size && (
+                                  <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full text-[11px] font-semibold">📐 {request.size}</span>
+                                )}
+                                {request.notes && (
+                                  <span className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-[11px] border border-amber-100">
+                                    📝 {request.notes.slice(0, 50)}{request.notes.length > 50 ? '…' : ''}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Action buttons */}
+                              {request.status === 'pending' ? (
+                                <div className="flex gap-2">
+                                  <button onClick={() => handleCustomizationResponse(request, true)}
+                                    className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white text-xs rounded-xl font-semibold transition-colors">
+                                    ✓ Accept
+                                  </button>
+                                  <button onClick={() => handleCustomizationResponse(request, false)}
+                                    className="flex-1 py-2 bg-red-100 hover:bg-red-200 text-red-700 text-xs rounded-xl font-semibold transition-colors">
+                                    ✕ Decline
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${statusCfg.cls}`}>
+                                  {request.status === 'accepted' ? '✓ Accepted — buyer notified' : '✗ Declined — buyer notified'}
+                                </span>
+                              )}
                             </div>
                           </div>
-                          {request.status === 'pending' ? (
-                            <div className="flex space-x-2 ml-4">
-                              <button onClick={() => handleCustomizationResponse(request, true)}
-                                className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700">
-                                Available ✓
-                              </button>
-                              <button onClick={() => handleCustomizationResponse(request, false)}
-                                className="px-3 py-1.5 bg-red-50 text-red-600 text-xs rounded-lg hover:bg-red-100">
-                                Unavailable ✗
-                              </button>
-                            </div>
-                          ) : (
-                            <span className={`text-xs px-2 py-1 rounded-full ${request.status === 'accepted' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {request.status === 'accepted' ? '✓ Accepted' : '✗ Rejected'}
-                            </span>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
             </motion.div>
           )}
+
+          {/* Products Tab */}
           {activeTab === 'products' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <div className="flex justify-between items-center mb-6">
@@ -546,7 +742,7 @@ const ArtisanDashboard = () => {
                         ))}
                       </div>
                       {selectedOrder.shippingAddress && (
-                        <div className="p-4 bg-gray-50 rounded-xl">
+                        <div className="p-4 bg-amber-50/60 rounded-xl">
                           <p className="text-xs font-medium text-gray-600 mb-2">DELIVERY ADDRESS</p>
                           <p className="text-sm text-gray-900">{selectedOrder.shippingAddress.name}</p>
                           <p className="text-sm text-gray-600">{selectedOrder.shippingAddress.address}, {selectedOrder.shippingAddress.city}</p>
@@ -686,92 +882,6 @@ const ArtisanDashboard = () => {
             </motion.div>
           )}
 
-          {/* Portfolio Tab */}
-          {activeTab === 'portfolio' && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Your Portfolio</h1>
-              <p className="text-gray-500 mb-6">Showcase your craft to buyers. Keep your portfolio updated to attract more customers.</p>
-
-              <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">Business Info</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-amber-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-1">Business Name</p>
-                    <p className="font-semibold text-gray-900">{user?.artisanProfile?.businessName || 'Not set'}</p>
-                  </div>
-                  <div className="p-4 bg-amber-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-1">Experience</p>
-                    <p className="font-semibold text-gray-900">{user?.artisanProfile?.yearsOfExperience || 0} years</p>
-                  </div>
-                  <div className="p-4 bg-amber-50 rounded-xl md:col-span-2">
-                    <p className="text-xs text-gray-500 mb-1">Description</p>
-                    <p className="text-gray-700">{user?.artisanProfile?.description || 'Not set'}</p>
-                  </div>
-                  <div className="p-4 bg-amber-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-2">Specialties</p>
-                    <div className="flex flex-wrap gap-2">
-                      {(user?.artisanProfile?.specialties || []).map((s, i) => (
-                        <span key={i} className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">{s}</span>
-                      ))}
-                      {!user?.artisanProfile?.specialties?.length && <p className="text-gray-500 text-sm">None set</p>}
-                    </div>
-                  </div>
-                  <div className="p-4 bg-amber-50 rounded-xl">
-                    <p className="text-xs text-gray-500 mb-2">Social Links</p>
-                    <div className="space-y-1">
-                      {user?.artisanProfile?.socialLinks?.instagram && (
-                        <a href={user.artisanProfile.socialLinks.instagram} target="_blank" rel="noreferrer"
-                          className="flex items-center space-x-2 text-sm text-pink-600 hover:underline">
-                          <FiInstagram className="h-3 w-3" /><span>Instagram</span>
-                        </a>
-                      )}
-                      {user?.artisanProfile?.socialLinks?.facebook && (
-                        <a href={user.artisanProfile.socialLinks.facebook} target="_blank" rel="noreferrer"
-                          className="flex items-center space-x-2 text-sm text-blue-600 hover:underline">
-                          <FiFacebook className="h-3 w-3" /><span>Facebook</span>
-                        </a>
-                      )}
-                      {user?.artisanProfile?.socialLinks?.website && (
-                        <a href={user.artisanProfile.socialLinks.website} target="_blank" rel="noreferrer"
-                          className="flex items-center space-x-2 text-sm text-gray-600 hover:underline">
-                          <FiGlobe className="h-3 w-3" /><span>Website</span>
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <button onClick={() => setActiveTab('profile')}
-                  className="mt-4 px-5 py-2 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 transition-colors">
-                  Edit Portfolio Info
-                </button>
-              </div>
-
-              {/* Product showcase */}
-              <div className="bg-white rounded-2xl shadow-sm p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-lg font-bold text-gray-900">Product Showcase</h2>
-                  <Link to={`/artisans/${user?._id}`} className="text-sm text-amber-600 hover:underline flex items-center space-x-1">
-                    <FiEye className="h-3 w-3" /><span>View public profile</span>
-                  </Link>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {products.filter(p => p.isActive).map(product => (
-                    <div key={product._id} className="relative rounded-xl overflow-hidden group">
-                      <img
-                        src={product.images?.[0]?.url || 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=200'}
-                        alt={product.name}
-                        className="w-full h-40 object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <p className="text-white text-xs font-medium text-center px-2">{product.name}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -788,7 +898,47 @@ const ArtisanDashboard = () => {
               <div className="bg-white rounded-2xl shadow-sm p-8">
                 {profileEditing ? (
                   <div className="space-y-6">
-                    <h2 className="text-lg font-semibold text-gray-900">Basic Information</h2>
+                    {/* Photo uploads inside edit mode */}
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Photos</h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Avatar upload */}
+                        <div className="relative bg-gray-50 rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 hover:border-amber-400 transition-colors cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
+                          <div className="flex items-center gap-4 p-4">
+                            {user?.avatar?.url ? (
+                              <img src={user.avatar.url} alt="Profile" className="w-16 h-16 rounded-xl object-cover flex-shrink-0 shadow" />
+                            ) : (
+                              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+                                {user?.name?.[0]}
+                              </div>
+                            )}
+                            <div>
+                              <p className="font-semibold text-gray-900 text-sm">Profile Photo</p>
+                              <p className="text-xs text-gray-400 mt-0.5">Click to upload a new photo</p>
+                              {uploadingAvatar && <p className="text-xs text-amber-600 mt-1">Uploading…</p>}
+                            </div>
+                            <FiCamera className="h-5 w-5 text-amber-500 ml-auto flex-shrink-0" />
+                          </div>
+                          <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleUploadAvatar} />
+                        </div>
+                        {/* Cover upload */}
+                        <div className="relative bg-gray-50 rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 hover:border-amber-400 transition-colors cursor-pointer" onClick={() => coverInputRef.current?.click()}>
+                          <div className="h-full min-h-[88px] relative">
+                            {user?.coverImage?.url
+                              ? <img src={user.coverImage.url} alt="Cover" className="w-full h-full object-cover absolute inset-0" />
+                              : <div className="w-full h-full absolute inset-0 bg-gradient-to-r from-amber-200 to-orange-200" />}
+                            <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center gap-1">
+                              {uploadingCover
+                                ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                                : <FiCamera className="h-5 w-5 text-white" />}
+                              <p className="text-white text-xs font-medium">Cover Image</p>
+                            </div>
+                          </div>
+                          <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleUploadCover} />
+                        </div>
+                      </div>
+                    </div>
+                    <h2 className="text-lg font-semibold text-gray-900 pt-2 border-t">Basic Information</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {[
                         { label: 'Full Name', key: 'name', type: 'text' },
@@ -797,9 +947,18 @@ const ArtisanDashboard = () => {
                       ].map(f => (
                         <div key={f.key}>
                           <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
-                          <input type={f.type} value={profileData[f.key]}
-                            onChange={e => setProfileData({ ...profileData, [f.key]: e.target.value })}
-                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none transition-colors" />
+                          {f.type === 'select' ? (
+                            <select value={profileData[f.key]}
+                              onChange={e => setProfileData({ ...profileData, [f.key]: e.target.value })}
+                              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none transition-colors bg-white">
+                              <option value="">Select location</option>
+                              {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          ) : (
+                            <input type={f.type} value={profileData[f.key]}
+                              onChange={e => setProfileData({ ...profileData, [f.key]: e.target.value })}
+                              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none transition-colors" />
+                          )}
                         </div>
                       ))}
                       <div className="md:col-span-2">
@@ -866,9 +1025,29 @@ const ArtisanDashboard = () => {
                   </div>
                 ) : (
                   <div className="space-y-6">
+                    {/* Cover image upload */}
+                    <div className="relative h-32 -mx-8 -mt-8 mb-6 rounded-t-2xl overflow-hidden bg-gradient-to-r from-amber-200 to-orange-200">
+                      {user?.coverImage?.url && <img src={user.coverImage.url} alt="cover" className="w-full h-full object-cover" />}
+                      <button onClick={() => coverInputRef.current?.click()}
+                        className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 bg-black/50 text-white text-xs rounded-xl hover:bg-black/70 transition-colors backdrop-blur-sm">
+                        {uploadingCover ? <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> : <FiCamera className="h-3.5 w-3.5" />}
+                        {uploadingCover ? 'Uploading...' : 'Change Cover'}
+                      </button>
+                    </div>
+
                     <div className="flex items-start space-x-6">
-                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
-                        {user?.name?.[0]}
+                      <div className="relative flex-shrink-0">
+                        {user?.avatar?.url ? (
+                          <img src={user.avatar.url} alt={user.name} className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg" />
+                        ) : (
+                          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-2xl font-bold border-4 border-white shadow-lg">
+                            {user?.name?.[0]}
+                          </div>
+                        )}
+                        <button onClick={() => avatarInputRef.current?.click()}
+                          className="absolute -bottom-1 -right-1 w-7 h-7 bg-amber-500 rounded-full flex items-center justify-center text-white shadow-md hover:bg-amber-600 transition-colors">
+                          {uploadingAvatar ? <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" /> : <FiCamera className="h-3.5 w-3.5" />}
+                        </button>
                       </div>
                       <div>
                         <h2 className="text-2xl font-bold text-gray-900">{user?.name}</h2>
@@ -899,14 +1078,14 @@ const ArtisanDashboard = () => {
                       </h3>
                       <div className="space-y-3">
                         {orders.filter(o => o.chatRoom).length === 0 ? (
-                          <div className="bg-gray-50 rounded-xl p-6 text-center text-gray-400">
+                          <div className="bg-amber-50/60 rounded-xl p-6 text-center text-gray-400">
                             <FiMessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
                             <p className="text-sm">No active chats yet. Chats appear when orders have a chat room.</p>
                           </div>
                         ) : (
                           orders.filter(o => o.chatRoom).slice(0, 5).map(order => (
                             <Link key={order._id} to={`/chat/${order.chatRoom}`}
-                              className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-amber-50 transition-colors">
+                              className="flex items-center justify-between p-4 bg-amber-50/60 rounded-xl hover:bg-amber-50 transition-colors">
                               <div className="flex items-center space-x-3">
                                 <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-sm font-bold text-amber-600">
                                   {order.buyer?.name?.[0] || '?'}
@@ -931,6 +1110,7 @@ const ArtisanDashboard = () => {
             </motion.div>
           )}
         </main>
+        </div>
       </div>
 
       {/* Product Modal */}
@@ -950,51 +1130,87 @@ const ArtisanDashboard = () => {
 // Product Create/Edit Modal
 const ProductModal = ({ product, onClose, onSave }) => {
   const [form, setForm] = useState({
-    name: product?.name || '',
-    description: product?.description || '',
-    price: product?.price || '',
-    category: product?.category || 'jewelry',
-    stock: product?.stock || 1,
-    materials: product?.materials?.join(', ') || '',
-    tags: product?.tags?.join(', ') || '',
+    name:          product?.name || '',
+    description:   product?.description || '',
+    price:         product?.price || '',
+    category:      product?.category || 'jewelry',
+    stock:         product?.stock || 1,
+    materials:     product?.materials?.join(', ') || '',
+    tags:          product?.tags?.join(', ') || '',
     isCustomizable: product?.isCustomizable || false,
-    imageUrls: product?.images?.map(i => i.url).join('\n') || '',
-    uploadedImages: product?.images?.map(i => i.url) || [],
   });
+
+  // Track real File objects and their base64 previews separately
+  const [newFiles,    setNewFiles]    = useState([]);       // actual File objects (new uploads)
+  const [newPreviews, setNewPreviews] = useState([]);       // base64 for new files
+  const [keptImages,  setKeptImages]  = useState(         // original images kept from existing product
+    product?.images?.map(img => ({ url: img.url, public_id: img.public_id || '' })) || []
+  );
   const [saving, setSaving] = useState(false);
+  const fileInputRef = React.useRef(null);
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    // Store actual File objects
+    setNewFiles(prev => [...prev, ...files]);
+    // Generate previews
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => setNewPreviews(prev => [...prev, ev.target.result]);
+      reader.readAsDataURL(file);
+    });
+    // Reset so same file can be picked again
+    e.target.value = '';
+  };
+
+  const removeKept = (idx) => setKeptImages(prev => prev.filter((_, i) => i !== idx));
+  const removeNew  = (idx) => {
+    setNewFiles(prev    => prev.filter((_, i) => i !== idx));
+    setNewPreviews(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const handleSave = async () => {
     if (!form.name || !form.price || !form.description) {
-      toast.error('Please fill in all required fields'); return;
+      toast.error('Please fill in name, description and price'); return;
     }
     setSaving(true);
     try {
-      const payload = {
-        name: form.name,
-        description: form.description,
-        price: Number(form.price),
-        category: form.category,
-        stock: Number(form.stock),
-        materials: form.materials.split(',').map(s => s.trim()).filter(Boolean),
-        tags: form.tags.split(',').map(s => s.trim()).filter(Boolean),
-        isCustomizable: form.isCustomizable,
-        images: (form.uploadedImages && form.uploadedImages.length > 0)
-          ? form.uploadedImages.map((url, i) => ({ url, isPrimary: i === 0 }))
-          : form.imageUrls.split('\n').filter(Boolean).map((url, i) => ({ url, isPrimary: i === 0 })),
-      };
+      const fd = new FormData();
+      fd.append('name',          form.name);
+      fd.append('description',   form.description);
+      fd.append('price',         Number(form.price));
+      fd.append('category',      form.category);
+      fd.append('stock',         Number(form.stock));
+      fd.append('isCustomizable', String(form.isCustomizable));
+      if (form.materials) fd.append('materials', form.materials);
+      if (form.tags)      fd.append('tags',      form.tags);
+
+      // Append real File objects (multer will receive these as `images`)
+      newFiles.forEach(file => fd.append('images', file));
+
+      // If no new files uploaded but there are kept originals, pass them as JSON
+      if (newFiles.length === 0 && keptImages.length > 0) {
+        fd.append('images', JSON.stringify(keptImages.map((img, i) => ({ ...img, isPrimary: i === 0 }))));
+      }
 
       if (product?._id) {
-        await api.put(`/products/${product._id}`, payload);
+        await api.put(`/products/${product._id}`, fd);
         toast.success('Product updated!');
       } else {
-        await api.post('/products', payload);
+        await api.post('/products', fd);
         toast.success('Product created!');
       }
       onSave();
     } catch (e) {
+      console.error('Save product error:', e);
       toast.error(e.response?.data?.message || 'Failed to save product');
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const totalImages = keptImages.length + newPreviews.length;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1002,125 +1218,165 @@ const ProductModal = ({ product, onClose, onSave }) => {
       onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
         className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white rounded-t-3xl p-6 border-b flex justify-between items-center">
+
+        {/* Header */}
+        <div className="sticky top-0 bg-white rounded-t-3xl p-6 border-b flex justify-between items-center z-10">
           <h2 className="text-xl font-bold text-gray-900">{product ? 'Edit Product' : 'Add New Product'}</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><FiX /></button>
         </div>
-        <div className="p-6 space-y-4">
+
+        <div className="p-6 space-y-5">
+          {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Product Name *</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Product Name *</label>
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none" />
+              placeholder="Enter product name"
+              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none transition-colors" />
           </div>
+
+          {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
-            <textarea value={form.description} rows={4} onChange={e => setForm({ ...form, description: e.target.value })}
-              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none resize-none" />
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Description *</label>
+            <textarea value={form.description} rows={4}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+              placeholder="Describe your product in detail..."
+              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none resize-none transition-colors" />
           </div>
+
+          {/* Price + Stock */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Price (Rs. ) *</label>
-              <input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })}
-                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none" />
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Price (Rs.) *</label>
+              <input type="number" min="0" value={form.price}
+                onChange={e => setForm({ ...form, price: e.target.value })}
+                placeholder="0"
+                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none transition-colors" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
-              <input type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })}
-                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none" />
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Stock Qty</label>
+              <input type="number" min="0" value={form.stock}
+                onChange={e => setForm({ ...form, stock: e.target.value })}
+                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none transition-colors" />
             </div>
           </div>
+
+          {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
             <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}
-              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none bg-white capitalize">
+              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none bg-white capitalize transition-colors">
               {CATEGORIES.map(c => <option key={c} value={c} className="capitalize">{c}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Materials (comma separated)</label>
-            <input value={form.materials} placeholder="e.g. Sterling Silver, Enamel"
-              onChange={e => setForm({ ...form, materials: e.target.value })}
-              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma separated)</label>
-            <input value={form.tags} placeholder="e.g. necklace, silver, handcrafted"
-              onChange={e => setForm({ ...form, tags: e.target.value })}
-              className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Product Images
-            </label>
-            {/* File Upload */}
-            <div className="border-2 border-dashed border-amber-300 rounded-xl p-4 text-center cursor-pointer hover:border-amber-500 transition-colors relative"
-              onClick={() => document.getElementById('product-img-upload').click()}>
-              <input
-                id="product-img-upload"
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={e => {
-                  const files = Array.from(e.target.files);
-                  files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = ev => {
-                      setForm(prev => ({
-                        ...prev,
-                        uploadedImages: [...(prev.uploadedImages || []), ev.target.result]
-                      }));
-                    };
-                    reader.readAsDataURL(file);
-                  });
-                }}
-              />
-              <div className="text-amber-600 mb-2">📷</div>
-              <p className="text-sm text-gray-600 font-medium">Click to upload images from your device</p>
-              <p className="text-xs text-gray-400 mt-1">JPG, PNG, WEBP supported • Multiple files allowed</p>
+
+          {/* Materials + Tags */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Materials</label>
+              <input value={form.materials} placeholder="e.g. Silver, Enamel"
+                onChange={e => setForm({ ...form, materials: e.target.value })}
+                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none transition-colors" />
             </div>
-            {/* Preview uploaded images */}
-            {form.uploadedImages && form.uploadedImages.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {form.uploadedImages.map((src, i) => (
-                  <div key={i} className="relative">
-                    <img src={src} alt="" className="w-16 h-16 object-cover rounded-lg border-2 border-amber-200" />
-                    <button
-                      type="button"
-                      onClick={() => setForm(prev => ({
-                        ...prev,
-                        uploadedImages: prev.uploadedImages.filter((_, j) => j !== i)
-                      }))}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Tags</label>
+              <input value={form.tags} placeholder="e.g. necklace, silver"
+                onChange={e => setForm({ ...form, tags: e.target.value })}
+                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none transition-colors" />
+            </div>
+          </div>
+
+          {/* ── Image Upload ── */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Product Images {totalImages > 0 && <span className="text-amber-600 font-normal">({totalImages} added)</span>}
+            </label>
+
+            {/* Drop zone */}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-amber-300 rounded-2xl p-8 text-center cursor-pointer hover:border-amber-500 hover:bg-amber-50 active:bg-amber-100 transition-all select-none"
+            >
+              <div className="text-5xl mb-3">📷</div>
+              <p className="font-semibold text-gray-800 text-sm">Tap to choose images from your device</p>
+              <p className="text-xs text-gray-400 mt-1">JPG · PNG · WEBP · up to 5MB each · multiple allowed</p>
+            </div>
+
+            {/* Hidden real file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/webp"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+
+            {/* Image grid — kept originals + new uploads */}
+            {totalImages > 0 && (
+              <div className="flex flex-wrap gap-3 mt-4">
+                {/* Kept original images */}
+                {keptImages.map((img, i) => (
+                  <div key={`kept-${i}`} className="relative group">
+                    <img src={img.url} alt="" className="w-20 h-20 object-cover rounded-xl border-2 border-gray-200 shadow-sm" />
+                    <button type="button" onClick={() => removeKept(i)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm font-bold flex items-center justify-center shadow hover:bg-red-600 transition-colors leading-none">
                       ×
                     </button>
-                    {i === 0 && <span className="absolute -bottom-1 left-0 right-0 text-center text-[9px] bg-amber-500 text-white rounded-b-lg">Primary</span>}
+                    {i === 0 && keptImages.length > 0 && (
+                      <span className="absolute bottom-0 inset-x-0 text-center text-[9px] bg-amber-500 text-white rounded-b-xl py-0.5 font-semibold">Primary</span>
+                    )}
                   </div>
                 ))}
+
+                {/* New uploaded images */}
+                {newPreviews.map((src, i) => (
+                  <div key={`new-${i}`} className="relative group">
+                    <img src={src} alt="" className="w-20 h-20 object-cover rounded-xl border-2 border-amber-300 shadow-sm" />
+                    <button type="button" onClick={() => removeNew(i)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm font-bold flex items-center justify-center shadow hover:bg-red-600 transition-colors leading-none">
+                      ×
+                    </button>
+                    {keptImages.length === 0 && i === 0 && (
+                      <span className="absolute bottom-0 inset-x-0 text-center text-[9px] bg-amber-500 text-white rounded-b-xl py-0.5 font-semibold">Primary</span>
+                    )}
+                    <span className="absolute top-0 left-0 text-[9px] bg-blue-500 text-white rounded-tl-xl rounded-br-xl px-1 py-0.5">New</span>
+                  </div>
+                ))}
+
+                {/* Add more */}
+                <div onClick={() => fileInputRef.current?.click()}
+                  className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-all">
+                  <span className="text-gray-400 text-2xl leading-none">+</span>
+                  <span className="text-[9px] text-gray-400 mt-0.5">Add more</span>
+                </div>
               </div>
             )}
-            {/* Fallback URL option */}
-            <details className="mt-3">
-              <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">Or paste image URLs instead</summary>
-              <textarea value={form.imageUrls} rows={3}
-                placeholder="https://example.com/image1.jpg"
-                onChange={e => setForm({ ...form, imageUrls: e.target.value })}
-                className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-xs resize-none font-mono" />
-            </details>
           </div>
-          <div className="flex items-center space-x-3">
-            <button onClick={() => setForm({ ...form, isCustomizable: !form.isCustomizable })}
+
+          {/* Customizable toggle */}
+          <div className="flex items-center gap-3 py-2">
+            <button type="button" onClick={() => setForm({ ...form, isCustomizable: !form.isCustomizable })}
               className={`relative w-12 h-6 rounded-full transition-colors ${form.isCustomizable ? 'bg-amber-500' : 'bg-gray-300'}`}>
               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.isCustomizable ? 'translate-x-7' : 'translate-x-1'}`} />
             </button>
-            <label className="text-sm font-medium text-gray-700">Allow Customization</label>
+            <label className="text-sm font-medium text-gray-700 cursor-pointer" onClick={() => setForm({ ...form, isCustomizable: !form.isCustomizable })}>
+              Allow buyers to request customizations
+            </label>
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white rounded-b-3xl p-6 border-t flex space-x-4">
-          <button onClick={onClose} className="flex-1 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-white rounded-b-3xl p-6 border-t flex gap-3">
+          <button onClick={onClose}
+            className="flex-1 py-3 border-2 border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
           <button onClick={handleSave} disabled={saving}
-            className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium hover:shadow-lg disabled:opacity-50">
-            {saving ? 'Saving...' : (product ? 'Update Product' : 'Create Product')}
+            className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 transition-all">
+            {saving
+              ? <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /><span>Saving…</span></>
+              : product ? 'Update Product' : 'Create Product'
+            }
           </button>
         </div>
       </motion.div>

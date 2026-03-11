@@ -26,10 +26,11 @@ import AdminDashboard from './pages/AdminDashboard';
 import ArtisanDetail from './pages/ArtisanDetail';
 import ArtisanShop from './pages/ArtisanShop';
 import Chat from './pages/Chat';
+import OrderTracking from './pages/OrderTracking';
 
 import { useAuth } from './context/AuthContext';
 
-const NO_LAYOUT_PATHS = ['/login', '/register'];
+const NO_LAYOUT_PATHS = ['/login', '/register', '/artisan-dashboard', '/artisan/dashboard', '/buyer/dashboard', '/buyer-dashboard', '/admin', '/dashboard'];
 
 const ProtectedRoute = ({ children, requiredRole = null }) => {
   const { user, loading } = useAuth();
@@ -41,22 +42,26 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  if (requiredRole && user.role !== requiredRole) return <Navigate to="/" replace />;
+  // Use activeRole (for role-switched users) when checking access
+  const effectiveRole = user.activeRole || user.role;
+  if (requiredRole && effectiveRole !== requiredRole) return <Navigate to="/" replace />;
   return children;
 };
 
 const DashboardRedirect = () => {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'admin') return <Navigate to="/admin" replace />;
-  if (user.role === 'artisan') return <Navigate to="/artisan-dashboard" replace />;
+  // Support role switching: use activeRole when present
+  const activeRole = user.activeRole || user.role;
+  if (activeRole === 'admin') return <Navigate to="/admin" replace />;
+  if (activeRole === 'artisan') return <Navigate to="/artisan-dashboard" replace />;
   return <BuyerDashboard />;
 };
 
 const AppLayout = () => {
   const location = useLocation();
   const { logout } = useAuth();
-  const hideLayout = NO_LAYOUT_PATHS.includes(location.pathname);
+  const hideLayout = NO_LAYOUT_PATHS.some(p => location.pathname === p || location.pathname.startsWith(p + '/'));
 
   useEffect(() => {
     // Issue 18: logout on every fresh app start (npm start / page reload)
@@ -91,7 +96,8 @@ const AppLayout = () => {
           <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
           <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
           <Route path="/order-confirmation/:id" element={<ProtectedRoute><OrderConfirmation /></ProtectedRoute>} />
-          <Route path="/artisan-dashboard" element={<ProtectedRoute requiredRole="artisan"><ArtisanDashboard /></ProtectedRoute>} />
+          <Route path="/order-tracking/:id" element={<ProtectedRoute><OrderTracking /></ProtectedRoute>} />
+          <Route path="/artisan-dashboard" element={<ProtectedRoute><ArtisanDashboard /></ProtectedRoute>} />
           <Route path="/chat/:roomId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
           <Route path="/admin/*" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
           <Route path="*" element={

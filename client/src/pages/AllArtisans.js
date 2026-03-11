@@ -6,8 +6,15 @@ import { FiPackage } from 'react-icons/fi';
 import { 
   FiMapPin, 
   FiStar, 
+  FiAward, 
+  FiUsers, 
   FiSearch,
+  FiFilter,
+  FiChevronRight,
+  FiHeart,
   FiMail,
+  FiTool,
+  FiShield,
   FiArrowLeft
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';

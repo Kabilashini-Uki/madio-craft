@@ -370,7 +370,10 @@ function ShopProductCard({ product: p, onView, onCart, onBuy }) {
       <div style={{ padding: 14 }}>
         <p style={{ fontSize: 11, color: '#8B4513', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>{p.category}</p>
         <h3 onClick={onView} style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, cursor: 'pointer' }}>{p.name}</h3>
-        <p style={{ fontSize: 20, fontWeight: 800, color: '#8B4513', marginBottom: 10 }}>Rs. {p.price?.toLocaleString()}</p>
+        <p style={{ fontSize: 20, fontWeight: 800, color: '#8B4513', marginBottom: 6 }}>Rs. {p.price?.toLocaleString()}</p>
+        <p style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: p.stock === 0 ? '#c62828' : p.stock <= 5 ? '#f97316' : '#16a34a' }}>
+          {p.stock === 0 ? '✗ Out of stock' : p.stock <= 5 ? `⚠ Only ${p.stock} left` : `✓ ${p.stock} in stock`}
+        </p>
         {p.stock > 0 ? (
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onCart} style={{

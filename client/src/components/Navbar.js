@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import api from '../services/api';
 import NotificationBell from './NotificationBell';
+import toast from 'react-hot-toast'; // Add this import
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -48,22 +49,30 @@ const Navbar = () => {
 
   const handleSwitchRole = async () => {
     try {
-      const originalRole = user?.originalRole || user?.role;
       const isInBuyerMode = user?.activeRole === 'buyer' || (user?.originalRole && user?.role === 'buyer');
       const mode = isInBuyerMode ? 'original' : 'buyer';
       const res = await api.post('/auth/switch-role', { mode });
       if (res.data.success) {
-        // Update localStorage and reload
-        const stored = JSON.parse(localStorage.getItem('user') || '{}');
-        const updated = { ...stored, ...res.data.user };
+        const updated = { ...res.data.user };
         localStorage.setItem('user', JSON.stringify(updated));
         localStorage.setItem('token', res.data.token);
-        window.location.reload();
+        window.location.href = '/dashboard';
       }
     } catch (err) {
       console.error('Switch role failed:', err);
+      toast.error('Could not switch role. Please try again.'); // Fixed toast usage
     }
   };
+
+  const effectiveRole = user?.activeRole || user?.role;
+  const canSwitchRole = user && (
+    ['artisan', 'admin'].includes(user.role) ||
+    ['artisan', 'admin'].includes(user.originalRole || '')
+  );
+  const isInBuyerMode = effectiveRole === 'buyer' && (user?.originalRole || user?.role !== 'buyer');
+  const switchLabel = isInBuyerMode
+    ? `Switch back to ${user.originalRole || user.role}`
+    : 'Switch to Buyer mode';
 
   const navLinks = [
     { label: 'Home', href: '/' },
@@ -102,8 +111,8 @@ const Navbar = () => {
 
           {/* Right Actions */}
           <div className="flex items-center space-x-2">
-            {/* Cart */}
-            {user && (
+            {/* Cart — show for buyers and buyer-mode users */}
+            {user && effectiveRole === 'buyer' && (
               <Link to="/cart" className="relative p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded-xl transition-colors">
                 <FiShoppingCart className="h-5 w-5" />
                 {cartCount > 0 && (
@@ -153,27 +162,33 @@ const Navbar = () => {
                         <Link to="/dashboard" className="flex items-center space-x-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
                           <FiUser className="h-4 w-4" /><span>Dashboard</span>
                         </Link>
-                        <Link to="/dashboard" className="flex items-center space-x-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
-                          <FiPackage className="h-4 w-4" /><span>My Orders</span>
-                        </Link>
-                        <Link to="/cart" className="flex items-center space-x-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
-                          <FiHeart className="h-4 w-4" /><span>Wishlist</span>
-                        </Link>
-                        {user.role === 'admin' && (
+                        {/* Show orders/cart only in buyer mode or for actual buyers */}
+                        {(effectiveRole === 'buyer') && (
+                          <Link to="/dashboard" className="flex items-center space-x-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
+                            <FiPackage className="h-4 w-4" /><span>My Orders</span>
+                          </Link>
+                        )}
+                        {(effectiveRole === 'buyer') && (
+                          <Link to="/cart" className="flex items-center space-x-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
+                            <FiHeart className="h-4 w-4" /><span>Wishlist</span>
+                          </Link>
+                        )}
+                        {/* Admin panel — only in artisan/admin mode (not buyer mode) */}
+                        {(user.role === 'admin' || user.originalRole === 'admin') && !isInBuyerMode && (
                           <Link to="/admin" className="flex items-center space-x-3 px-4 py-2.5 text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors">
                             <FiSettings className="h-4 w-4" /><span>Admin Panel</span>
                           </Link>
                         )}
                       </div>
-                      {(user.originalRole || ['artisan','admin'].includes(user.role)) && user.role !== 'buyer' || user.originalRole ? (
+                      {canSwitchRole && (
                         <div className="border-t border-gray-100 pt-1">
                           <button onClick={handleSwitchRole}
                             className="flex items-center space-x-3 px-4 py-2.5 text-blue-600 hover:bg-blue-50 w-full transition-colors">
                             <FiRefreshCw className="h-4 w-4" />
-                            <span>{(user.activeRole === 'buyer' || (user.originalRole && user.role === 'buyer')) ? `Switch back to ${user.originalRole}` : 'Switch to Buyer mode'}</span>
+                            <span>{switchLabel}</span>
                           </button>
                         </div>
-                      ) : null}
+                      )}
                       <div className="border-t border-gray-100 pt-1">
                         <button onClick={handleLogout}
                           className="flex items-center space-x-3 px-4 py-2.5 text-red-600 hover:bg-red-50 w-full transition-colors">

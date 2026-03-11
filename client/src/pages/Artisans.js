@@ -11,22 +11,23 @@ import {
   FiFilter,
   FiChevronRight,
   FiHeart,
+  FiMail,
   FiTool,
   FiShield,
   FiArrowRight,
   FiPackage,
   FiX,
-  FiClock,
+  FiClock
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useSecureChat } from '../context/SecureChatContext';
+
 
 const Artisans = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { createCustomizationRoom } = useSecureChat();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedLocation, setSelectedLocation] = useState('all');
@@ -40,11 +41,7 @@ const Artisans = () => {
 
   const [modalProducts, setModalProducts] = useState([]);
   const [loadingModalProducts, setLoadingModalProducts] = useState(false);
-  const [showCustomizationChat, setShowCustomizationChat] = useState(false);
-  const [customizationMsg, setCustomizationMsg] = useState('');
-  const [sendingCustomMsg, setSendingCustomMsg] = useState(false);
-  const [customChatHistory, setCustomChatHistory] = useState([]);
-  const [customChatRoom, setCustomChatRoom] = useState(null);
+
 
   // Fetch artisans
   useEffect(() => {
@@ -74,10 +71,6 @@ const Artisans = () => {
   const handleViewArtisan = async (artisan) => {
     setSelectedArtisan(artisan);
     setShowArtisanModal(true);
-    setShowCustomizationChat(false);
-    setCustomChatHistory([]);
-    setCustomChatRoom(null);
-    // Fetch this artisan's products
     setLoadingModalProducts(true);
     try {
       const res = await api.get(`/products?artisan=${artisan._id}&limit=6`);
@@ -86,69 +79,12 @@ const Artisans = () => {
     finally { setLoadingModalProducts(false); }
   };
 
-  const handleContact = async (artisanId) => {
-    if (!user) {
-      toast.error('Please login to contact artisans');
-      navigate('/login');
-      return;
-    }
-
-    setModalLoading(true);
-    try {
-      const room = await createCustomizationRoom(
-        artisanId,
-        null,
-        { type: 'inquiry', message: 'Initial contact from artisans page' }
-      );
-      
-      if (room) {
-        toast.success('Chat room created!');
-        navigate(`/chat/${room._id}`);
-        setShowArtisanModal(false);
-      }
-    } catch (error) {
-      console.error('Failed to create room:', error);
-      toast.error('Failed to start chat. Please try again.');
-    } finally {
-      setModalLoading(false);
-    }
+  const handleContact = (artisanId) => {
+    setShowArtisanModal(false);
+    navigate(`/artisans/${artisanId}`);
   };
 
-  const handleOpenCustomizationChat = async () => {
-    if (!user) { toast.error('Please login to chat'); navigate('/login'); return; }
-    setShowCustomizationChat(true);
-    if (!customChatRoom && selectedArtisan) {
-      setModalLoading(true);
-      try {
-        const room = await createCustomizationRoom(
-          selectedArtisan._id, null,
-          { type: 'inquiry', message: 'Starting customization chat' }
-        );
-        if (room) { setCustomChatRoom(room); toast.success('Chat ready!'); }
-      } catch { toast.error('Could not start chat'); }
-      finally { setModalLoading(false); }
-    }
-  };
 
-  const handleSendCustomizationMsg = async () => {
-    if (!customizationMsg.trim()) return;
-    setSendingCustomMsg(true);
-    try {
-      const endpoint = customChatRoom ? `/chat/rooms/${customChatRoom._id}/messages` : '/chat/rooms';
-      const payload = customChatRoom 
-        ? { message: customizationMsg }
-        : { artisanId: selectedArtisan._id, initialMessage: customizationMsg };
-      const res = await api.post(endpoint, payload);
-      if (res.data.success || res.data.room || res.data.message) {
-        const room = res.data.room;
-        if (room && !customChatRoom) setCustomChatRoom(room);
-        setCustomChatHistory(prev => [...prev, { message: customizationMsg, sender: user?._id, timestamp: new Date() }]);
-        setCustomizationMsg('');
-        toast.success('Message sent to artisan!');
-      }
-    } catch { toast.error('Failed to send message'); }
-    finally { setSendingCustomMsg(false); }
-  };
 
   const categories = ['all', 'pottery', 'woodwork', 'jewelry', 'metalwork', 'textiles', 'glass'];
   const locations = ['all', 'Eravur', 'Marudhamunai', 'Valaichenai', 'Ottamavadi', 'Kaatankudy'];
@@ -311,7 +247,7 @@ const Artisans = () => {
                 {/* Cover Image */}
                 <div className="relative h-40 overflow-hidden">
                   <img
-                    src={artisan.coverImage || 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg'}
+                    src={artisan.coverImage?.url || artisan.coverImage || artisan.backgroundImage?.url || 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg'}
                     alt={artisan.businessName}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                   />
@@ -322,7 +258,7 @@ const Artisans = () => {
                     <div className="relative">
                       <div className="w-24 h-24 rounded-2xl border-4 border-white overflow-hidden shadow-xl bg-white">
                         <img
-                          src={artisan.profileImage || artisan.avatar?.url || `https://ui-avatars.com/api/?name=${artisan.name}&background=8B4513&color=fff&size=128`}
+                          src={artisan.profileImage?.url || artisan.profileImage || artisan.avatar?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(artisan.name||'A')}&background=8B4513&color=fff&size=128`}
                           alt={artisan.name}
                           className="w-full h-full object-cover"
                         />
@@ -466,7 +402,7 @@ const Artisans = () => {
               {/* Modal Header with Cover Image */}
               <div className="relative h-48 bg-gradient-to-r from-amber-600 to-amber-800">
                 <img 
-                  src={selectedArtisan.coverImage || 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg'}
+                  src={selectedArtisan.coverImage?.url || selectedArtisan.coverImage || selectedArtisan.backgroundImage?.url || 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg'}
                   alt={selectedArtisan.name}
                   className="w-full h-full object-cover opacity-50"
                 />
@@ -482,7 +418,7 @@ const Artisans = () => {
                   <div className="relative">
                     <div className="w-32 h-32 rounded-2xl border-4 border-white overflow-hidden shadow-xl bg-white">
                       <img
-                        src={selectedArtisan.profileImage || selectedArtisan.avatar?.url || `https://ui-avatars.com/api/?name=${selectedArtisan.name}&background=8B4513&color=fff&size=128`}
+                        src={selectedArtisan.profileImage?.url || selectedArtisan.profileImage || selectedArtisan.avatar?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedArtisan.name||'A')}&background=8B4513&color=fff&size=128`}
                         alt={selectedArtisan.name}
                         className="w-full h-full object-cover"
                       />
@@ -571,80 +507,20 @@ const Artisans = () => {
                   </div>
                 )}
 
-                {/* Action Buttons - 3 proper buttons */}
-                <div className="grid grid-cols-3 gap-3 pt-4 border-t">
+                {/* Action Buttons - only View Profile */}
+                <div className="flex gap-3 pt-4 border-t">
                   <button
                     onClick={() => {
                       setShowArtisanModal(false);
                       navigate(`/artisans/${selectedArtisan._id}`);
                     }}
-                    className="px-4 py-3 border-2 border-amber-600 text-amber-700 rounded-xl font-semibold hover:bg-amber-50 transition-colors text-sm flex items-center justify-center space-x-1"
+                    className="flex-1 px-4 py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 transition-colors text-sm flex items-center justify-center gap-1.5"
                   >
                     <FiUsers className="h-4 w-4" />
                     <span>View Profile</span>
                   </button>
-                  <button
-                    onClick={handleOpenCustomizationChat}
-                    disabled={modalLoading}
-                    className="px-4 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-50 transition-colors text-sm flex items-center justify-center space-x-1"
-                  >
-                    {modalLoading ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <FiTool className="h-4 w-4" />}
-                    <span>Customize Chat</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowArtisanModal(false);
-                      navigate(`/artisans/${selectedArtisan._id}/shop`);
-                    }}
-                    className="px-4 py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 transition-colors text-sm flex items-center justify-center space-x-1"
-                  >
-                    <FiPackage className="h-4 w-4" />
-                    <span>View Shop</span>
-                  </button>
                 </div>
 
-                {/* Customization Chatbox */}
-                {showCustomizationChat && (
-                  <div className="mt-4 border-2 border-purple-200 rounded-xl overflow-hidden">
-                    <div className="bg-purple-50 px-4 py-3 flex items-center justify-between">
-                      <h4 className="font-semibold text-purple-800 flex items-center space-x-2">
-                        <FiTool className="h-4 w-4" /><span>Customization Chat with {selectedArtisan.name}</span>
-                      </h4>
-                      <button onClick={() => setShowCustomizationChat(false)} className="text-purple-500 hover:text-purple-800">
-                        <FiX className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="bg-gray-50 p-3 space-y-2 max-h-48 overflow-y-auto">
-                      {customChatHistory.length === 0 && (
-                        <p className="text-center text-gray-400 text-sm py-4">Send a message to start customization chat</p>
-                      )}
-                      {customChatHistory.map((msg, i) => (
-                        <div key={i} className={`flex ${msg.sender === user?._id ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${msg.sender === user?._id ? 'bg-purple-600 text-white' : 'bg-white text-gray-900 shadow-sm'}`}>
-                            {msg.message}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="p-3 bg-white border-t flex space-x-2">
-                      <input
-                        type="text"
-                        value={customizationMsg}
-                        onChange={e => setCustomizationMsg(e.target.value)}
-                        onKeyPress={e => e.key === 'Enter' && handleSendCustomizationMsg()}
-                        placeholder="Describe your customization request..."
-                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-300 focus:border-transparent"
-                      />
-                      <button
-                        onClick={handleSendCustomizationMsg}
-                        disabled={sendingCustomMsg || !customizationMsg.trim()}
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
-                      >
-                        {sendingCustomMsg ? '...' : 'Send'}
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {/* Artisan's Products */}
                 <div className="mt-4 pt-4 border-t">
@@ -677,11 +553,7 @@ const Artisans = () => {
                   )}
                 </div>
 
-                {/* Security Note */}
-                <p className="text-xs text-gray-400 text-center mt-2 flex items-center justify-center">
-                  <FiClock className="h-3 w-3 mr-1" />
-                  Messages are end-to-end encrypted and private
-                </p>
+
               </div>
             </motion.div>
           </motion.div>

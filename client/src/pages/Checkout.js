@@ -22,10 +22,11 @@ const SimpleCheckout = () => {
   const { user } = useAuth();
   const { cartItems, cartSummary, clearCart } = useCart();
   
-  // Block artisans and admins from placing orders
+  // Block artisans and admins from placing orders — unless they're in buyer mode
   useEffect(() => {
-    if (user && (user.role === 'artisan' || user.role === 'admin')) {
-      toast.error('Artisans and admins cannot place orders.');
+    const effectiveRole = user?.activeRole || user?.role;
+    if (user && (user.role === 'artisan' || user.role === 'admin') && effectiveRole !== 'buyer') {
+      toast.error('Switch to buyer mode to place orders.');
       navigate('/');
     }
   }, [user]);
@@ -93,18 +94,24 @@ const SimpleCheckout = () => {
     try {
       // Prepare order data
       const orderData = {
-        items: cartItems.map(item => ({
-          product: item.product._id,
-          quantity: item.quantity,
-          customization: item.customization || null,
-          price: item.price
-        })),
+        items: cartItems.map(item => {
+          // product may be a populated object or a plain id
+          const productId = item.product?._id || item.product;
+          // price may live on item directly or inside item.product
+          const unitPrice = item.price || item.product?.price || 0;
+          return {
+            product:       productId,
+            quantity:      item.quantity,
+            customization: item.customization || null,
+            price:         unitPrice,
+          };
+        }),
         shippingAddress,
-        paymentMethod: 'cod', // Always Cash on Delivery
-        subtotal: cartSummary.subtotal,
+        paymentMethod: 'cod',
+        subtotal:     cartSummary.subtotal,
         shippingCost: cartSummary.shipping,
-        tax: cartSummary.tax,
-        totalAmount: cartSummary.total
+        tax:          0,
+        totalAmount:  cartSummary.subtotal + (cartSummary.shipping || 0),
       };
 
       console.log('Placing order:', orderData);
@@ -158,7 +165,7 @@ const SimpleCheckout = () => {
                 <div>
                   <p className="font-medium text-blue-800">Payment Method: Cash on Delivery</p>
                   <p className="text-sm text-blue-600 mt-1">
-                    Pay Rs. {Math.round(cartSummary.total).toLocaleString()} when you receive your order.
+                    Pay Rs. {Math.round((cartSummary.subtotal || 0) + (cartSummary.shipping || 0)).toLocaleString()} when you receive your order.
                   </p>
                 </div>
               </div>
@@ -387,10 +394,6 @@ const SimpleCheckout = () => {
                     {cartSummary.shipping === 0 ? 'Free' : `Rs. ${cartSummary.shipping}`}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tax (5%)</span>
-                  <span className="font-medium line-through text-gray-400">Removed</span>
-                </div>
                 <div className="border-t pt-2 mt-2">
                   <div className="flex justify-between font-bold text-lg">
                     <span>Total</span>
@@ -438,7 +441,7 @@ const SimpleCheckout = () => {
               
               <div className="flex justify-between items-center mb-6">
                 <span className="text-gray-600">Total Amount:</span>
-                <span className="text-2xl font-bold text-primary">Rs. {Math.round(cartSummary.total).toLocaleString()}</span>
+                <span className="text-2xl font-bold text-primary">Rs. {Math.round((cartSummary.subtotal || 0) + (cartSummary.shipping || 0)).toLocaleString()}</span>
               </div>
               
               <div className="bg-blue-50 rounded-xl p-3 mb-6">

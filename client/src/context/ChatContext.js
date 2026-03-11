@@ -1,42 +1,34 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { io } from 'socket.io-client';
 import api from '../services/api';
 import { useAuth } from './AuthContext';
+import { useSocket } from './SocketContext';
 
 const ChatContext = createContext();
 
 export const useChat = () => useContext(ChatContext);
 
 export const ChatProvider = ({ children }) => {
-  const [socket, setSocket] = useState(null);
   const [activeRoom, setActiveRoom] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [messages, setMessages] = useState({});
   const [unreadCount, setUnreadCount] = useState(0);
   const { user } = useAuth();
+  // Reuse the shared socket from SocketContext — no duplicate connections
+  const { socket } = useSocket();
 
   useEffect(() => {
-    if (!user) return;
+    if (!socket) return;
 
-    const newSocket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000', {
-      auth: { token: localStorage.getItem('token') }
-    });
-
-    setSocket(newSocket);
-
-    newSocket.on('connect', () => {
-      console.log('Connected to chat server:', newSocket.id);
-    });
-
-    newSocket.on('receive-message', ({ roomId, message, sender, timestamp }) => {
+    const handleReceiveMessage = ({ roomId, message, sender, timestamp }) => {
       setMessages(prev => ({
         ...prev,
         [roomId]: [...(prev[roomId] || []), { message, sender, timestamp }]
       }));
-    });
+    };
 
-    return () => { newSocket.disconnect(); };
-  }, [user]);
+    socket.on('receive-message', handleReceiveMessage);
+    return () => { socket.off('receive-message', handleReceiveMessage); };
+  }, [socket]);
 
   const joinRoom = useCallback((roomId) => {
     if (socket && roomId) {
@@ -62,8 +54,8 @@ export const ChatProvider = ({ children }) => {
   const loadRooms = useCallback(async () => {
     try {
       const res = await api.get('/chat/rooms');
-      setRooms(res.data.rooms);
-      const totalUnread = res.data.rooms.reduce((sum, room) => {
+      setRooms(res.data.rooms || []);
+      const totalUnread = (res.data.rooms || []).reduce((sum, room) => {
         return sum + (room.unreadCount?.[user?._id] || 0);
       }, 0);
       setUnreadCount(totalUnread);

@@ -88,7 +88,7 @@ export const AuthProvider = ({ children }) => {
       let message = 'Login failed';
 
       if (err.message === 'Network Error' || err.message?.includes('connect')) {
-        message = 'Cannot connect to server. Please make sure the backend is running on port 5001.';
+        message = 'Cannot connect to server. Please make sure the backend is running (check REACT_APP_API_URL in .env).';
       } else if (err.response?.data?.message) {
         message = err.response.data.message;
       } else if (err.message) {
@@ -96,7 +96,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       toast.error(message);
-      return { success: false, error: message };
+      return { success: false, error: message, locked: err.response?.data?.locked || false, lockedUntil: err.response?.data?.lockedUntil || null };
     }
   };
 
@@ -122,14 +122,14 @@ export const AuthProvider = ({ children }) => {
       setToken(token);
 
       toast.success('Welcome to the Madio Craft');
-      return { success: true, user };
+      return { success: true, user, token };
 
     } catch (err) {
       console.error('Registration error:', err);
       let message = 'Registration failed';
 
       if (err.message === 'Network Error' || err.message?.includes('connect')) {
-        message = 'Cannot connect to server. Please make sure the backend is running on port 5001.';
+        message = 'Cannot connect to server. Please make sure the backend is running (check REACT_APP_API_URL in .env).';
       } else if (err.response?.data?.message) {
         message = err.response.data.message;
       } else if (err.message) {

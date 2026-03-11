@@ -9,10 +9,9 @@ console.log('🌐 API Base URL:', API_URL);
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 15000, // 15 seconds timeout
+  // NOTE: Do NOT set Content-Type here globally — FormData requests need the browser
+  // to set it automatically with the correct multipart boundary.
+  timeout: 15000,
 });
 
 // Request interceptor
@@ -22,7 +21,12 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    console.log(` API Request: ${config.method?.toUpperCase()} ${config.url}`, config.data || '');
+    // For FormData, let browser set Content-Type with boundary automatically
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    } else if (!config.headers['Content-Type']) {
+      config.headers['Content-Type'] = 'application/json';
+    }
     return config;
   },
   (error) => {

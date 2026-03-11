@@ -1,8 +1,8 @@
 // src/context/SecureChatContext.js
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { io } from 'socket.io-client';
 import api from '../services/api';
 import { useAuth } from './AuthContext';
+import { useSocket } from './SocketContext';
 import toast from 'react-hot-toast';
 
 const SecureChatContext = createContext();
@@ -14,53 +14,35 @@ export const useSecureChat = () => {
 };
 
 export const SecureChatProvider = ({ children }) => {
-  const [socket, setSocket] = useState(null);
   const [activeRoom, setActiveRoom] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [messages, setMessages] = useState({});
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [connected, setConnected] = useState(false);
-  
-  const { user, token, isAuthenticated } = useAuth();
+
+  const { user, isAuthenticated } = useAuth();
+  // Reuse the shared socket from SocketContext — no duplicate connections
+  const { socket } = useSocket();
+  const connected = !!socket?.connected;
 
   useEffect(() => {
-    if (!isAuthenticated || !user || !token) {
-      if (socket) { socket.disconnect(); setSocket(null); setConnected(false); }
-      return;
-    }
+    if (!socket) return;
 
-    const socketUrl = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
-    
-    const newSocket = io(socketUrl, {
-      auth: { token },
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
-
-    newSocket.on('connect', () => {
-      console.log('🔐 Secure chat connected:', newSocket.id);
-      setConnected(true);
-      newSocket.emit('register-user', user._id || user.id);
-    });
-
-    newSocket.on('disconnect', () => { setConnected(false); });
-    newSocket.on('connect_error', (error) => { console.error('Socket connection error:', error); });
-
-    newSocket.on('receive-message', (data) => {
+    const handleReceiveMessage = (data) => {
       const { roomId, message, sender, timestamp, customizationId, _id } = data;
       setMessages(prev => {
         const roomMessages = prev[roomId] || [];
         if (roomMessages.some(m => m._id === _id)) return prev;
         return {
           ...prev,
-          [roomId]: [...roomMessages, { _id, message, sender, timestamp, customizationId, isOwn: sender === (user._id || user.id) }]
+          [roomId]: [...roomMessages, {
+            _id, message, sender, timestamp, customizationId,
+            isOwn: sender === (user?._id || user?.id)
+          }]
         };
       });
 
-      if (sender !== (user._id || user.id)) {
+      if (sender !== (user?._id || user?.id)) {
         setUnreadCount(prev => prev + 1);
         toast.custom((t) => (
           <div onClick={() => window.location.href = `/chat/${roomId}`}
@@ -70,15 +52,20 @@ export const SecureChatProvider = ({ children }) => {
           </div>
         ), { duration: 3000 });
       }
-    });
+    };
 
-    newSocket.on('user-typing', ({ roomId, isTyping, userId }) => {
+    const handleTyping = ({ roomId, isTyping, userId }) => {
       console.log(`User ${userId} is ${isTyping ? 'typing' : 'not typing'} in room ${roomId}`);
-    });
+    };
 
-    setSocket(newSocket);
-    return () => { newSocket.disconnect(); setSocket(null); setConnected(false); };
-  }, [isAuthenticated, user, token]);
+    socket.on('receive-message', handleReceiveMessage);
+    socket.on('user-typing', handleTyping);
+
+    return () => {
+      socket.off('receive-message', handleReceiveMessage);
+      socket.off('user-typing', handleTyping);
+    };
+  }, [socket, user]);
 
   const joinRoom = useCallback(async (roomId) => {
     if (!socket || !roomId) return false;
@@ -89,7 +76,7 @@ export const SecureChatProvider = ({ children }) => {
       const response = await api.get(`/chat/rooms/${roomId}/messages`);
       if (response.data.success) {
         const loadedMessages = (response.data.messages || []).map(msg => ({
-          ...msg, isOwn: msg.sender === (user._id || user.id)
+          ...msg, isOwn: msg.sender === (user?._id || user?.id)
         }));
         setMessages(prev => ({ ...prev, [roomId]: loadedMessages }));
       }
@@ -161,7 +148,9 @@ export const SecureChatProvider = ({ children }) => {
       const response = await api.get('/chat/rooms');
       if (response.data.success) {
         setRooms(response.data.rooms || []);
-        const totalUnread = (response.data.rooms || []).reduce((sum, room) => sum + (room.unreadCount?.[user?._id] || 0), 0);
+        const totalUnread = (response.data.rooms || []).reduce(
+          (sum, room) => sum + (room.unreadCount?.[user?._id] || 0), 0
+        );
         setUnreadCount(totalUnread);
       }
     } catch (error) {

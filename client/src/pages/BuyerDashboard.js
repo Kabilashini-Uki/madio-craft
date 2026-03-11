@@ -4,22 +4,26 @@ import { motion } from 'framer-motion';
 import {
   FiPackage, FiShoppingBag, FiHeart, FiUser, FiLogOut,
   FiDollarSign, FiClock, FiCheckCircle, FiTruck, FiHome,
-  FiMessageCircle, FiEdit, FiMapPin, FiPlus, FiStar
+  FiMessageCircle, FiEdit, FiMapPin, FiPlus, FiStar, FiShoppingCart, FiMenu
 } from 'react-icons/fi';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import NotificationBell from '../components/NotificationBell';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
 const BuyerDashboard = () => {
   const { user, logout, updateUser } = useAuth();
-  const { wishlist } = useCart();
+  const { wishlist, cartItems } = useCart();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [profileEditing, setProfileEditing] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = React.useRef(null);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [profileData, setProfileData] = useState({
     name: user?.name || '',
@@ -38,11 +42,17 @@ const BuyerDashboard = () => {
   }, []);
 
   const fetchOrders = async () => {
+    setLoadingOrders(true);
     try {
       const res = await api.get('/orders/my-orders');
-      setOrders(res.data.orders || []);
-    } catch (e) { console.error(e); }
-    finally { setLoadingOrders(false); }
+      // Handle both {orders: [...]} and direct array responses
+      const ordersData = res.data?.orders || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      setOrders(ordersData);
+    } catch (e) {
+      console.error('Failed to load orders:', e);
+      toast.error('Failed to load orders. Please refresh.');
+      setOrders([]);
+    } finally { setLoadingOrders(false); }
   };
 
   const handleCancelOrder = async (orderId) => {
@@ -65,6 +75,28 @@ const BuyerDashboard = () => {
       setProfileEditing(false);
     } catch (e) { toast.error('Failed to update profile'); }
     finally { setSavingProfile(false); }
+  };
+
+  const handleUploadAvatar = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return; }
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('avatar', file);
+      const res = await api.post('/users/avatar', fd);
+      if (res.data.success) {
+        updateUser(res.data.user);
+        toast.success('Profile photo updated!');
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed to upload photo');
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
   };
 
   const handleAddAddress = async () => {
@@ -118,43 +150,73 @@ const BuyerDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-amber-50/30">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 min-h-screen bg-gradient-to-b from-blue-900 to-blue-800 text-white flex-shrink-0 fixed left-0 top-20 z-10">
-          <div className="p-6">
-            <div className="flex items-center space-x-3 mb-8">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
-                {user?.name?.[0] || 'B'}
+        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+          <div className="p-4 flex items-center justify-between border-b border-amber-800 h-16">
+            {sidebarOpen && <h1 className="text-lg font-bold text-amber-100">My Account</h1>}
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-amber-800 rounded-lg ml-auto">
+              <FiMenu className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="p-4">
+            {sidebarOpen && (
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-base flex-shrink-0">
+                  {user?.name?.[0] || 'B'}
+                </div>
+                <div>
+                  <p className="font-semibold text-amber-100 text-sm">{user?.name}</p>
+                  <p className="text-xs text-amber-300">Buyer</p>
+                </div>
               </div>
-              <div>
-                <p className="font-semibold text-blue-100 text-sm">{user?.name}</p>
-                <p className="text-xs text-blue-300">Buyer</p>
-              </div>
-            </div>
+            )}
             <nav className="space-y-1">
               {navItems.map(item => (
                 <button key={item.id} onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                  className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-2'} py-3 rounded-xl text-sm font-medium transition-all ${
                     activeTab === item.id
                       ? 'bg-white/20 text-white shadow-md'
-                      : 'text-blue-200 hover:bg-white/10 hover:text-white'
-                  }`}>
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                      : 'text-amber-200 hover:bg-white/10 hover:text-white'
+                  }`}
+                  title={!sidebarOpen ? item.label : undefined}>
+                  <item.icon className="h-4 w-4 flex-shrink-0" />
+                  {sidebarOpen && <span>{item.label}</span>}
                 </button>
               ))}
-              <div className="border-t border-blue-700 pt-2 mt-4">
+              <div className="border-t border-amber-800 pt-2 mt-4">
                 <button onClick={() => { logout(); navigate('/login'); }}
-                  className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-red-300 hover:bg-red-900/30">
-                  <FiLogOut className="h-4 w-4" /><span>Logout</span>
+                  className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-2'} py-3 rounded-xl text-sm font-medium text-red-300 hover:bg-red-900/30`}>
+                  <FiLogOut className="h-4 w-4 flex-shrink-0" />
+                  {sidebarOpen && <span>Logout</span>}
                 </button>
               </div>
             </nav>
           </div>
         </aside>
 
-        <main className="ml-64 flex-1 p-8 pt-28">
+        {/* Main Content Area */}
+        <div className={`${sidebarOpen ? 'ml-64' : 'ml-20'} flex-1 flex flex-col transition-all duration-300`}>
+          {/* Top Header Bar */}
+          <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-10 shadow-sm">
+            <h2 className="text-gray-700 font-semibold capitalize">{activeTab === 'overview' ? 'Dashboard' : activeTab.replace('-', ' ')}</h2>
+            <div className="flex items-center space-x-3">
+              {/* Notification Bell */}
+              <NotificationBell />
+              {/* Cart Icon */}
+              <Link to="/cart" className="relative p-2 hover:bg-amber-50 rounded-xl transition-colors">
+                <FiShoppingCart className="h-5 w-5 text-gray-600" />
+                {cartItems?.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-amber-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {cartItems.length}
+                  </span>
+                )}
+              </Link>
+            </div>
+          </header>
+
+        <main className="flex-1 p-8">
           {/* Overview */}
           {activeTab === 'overview' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -163,7 +225,7 @@ const BuyerDashboard = () => {
 
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 {[
-                  { label: 'Total Orders', value: orders.length, icon: FiShoppingBag, color: 'from-blue-500 to-blue-600' },
+                  { label: 'Total Orders', value: orders.length, icon: FiShoppingBag, color: 'from-amber-500 to-amber-600' },
                   { label: 'In Progress', value: orders.filter(o => !['delivered','cancelled'].includes(o.orderStatus)).length, icon: FiClock, color: 'from-yellow-500 to-orange-500' },
                   { label: 'Wishlist', value: wishlist.length, icon: FiHeart, color: 'from-red-500 to-pink-500' },
                 ].map((s, i) => (
@@ -184,7 +246,7 @@ const BuyerDashboard = () => {
                     <div className="text-center py-10">
                       <FiShoppingBag className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                       <p className="text-gray-500 mb-3">No orders yet</p>
-                      <Link to="/products" className="text-blue-600 hover:underline text-sm">Browse products</Link>
+                      <Link to="/products" className="text-amber-700 hover:underline text-sm">Browse products</Link>
                     </div>
                   ) :
                   orders.slice(0, 5).map(order => (
@@ -198,7 +260,7 @@ const BuyerDashboard = () => {
                           {order.orderStatus?.replace(/_/g,' ')}
                         </span>
                         {order.chatRoom && (
-                          <Link to={`/chat/${order.chatRoom}`} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+                          <Link to={`/chat/${order.chatRoom}`} className="p-2 text-amber-700 hover:bg-amber-50 rounded-lg">
                             <FiMessageCircle className="h-4 w-4" />
                           </Link>
                         )}
@@ -219,7 +281,7 @@ const BuyerDashboard = () => {
                   <div className="text-center py-20 bg-white rounded-2xl shadow-sm">
                     <FiShoppingBag className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                     <p className="text-gray-500 mb-4">No orders yet</p>
-                    <Link to="/products" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium inline-block">Shop Now</Link>
+                    <Link to="/products" className="px-6 py-3 bg-amber-700 text-white rounded-xl font-medium inline-block">Shop Now</Link>
                   </div>
                 ) :
                 <div className="space-y-4">
@@ -234,7 +296,7 @@ const BuyerDashboard = () => {
                           <p className="text-xs text-gray-400">{new Date(order.createdAt).toLocaleDateString()}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-blue-600 text-lg">Rs. {(order.totalAmount || order.finalAmount)?.toLocaleString()}</p>
+                          <p className="font-bold text-amber-700 text-lg">Rs. {(order.totalAmount || order.finalAmount)?.toLocaleString()}</p>
                           <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-1 ${statusColors[order.orderStatus] || 'bg-gray-100 text-gray-700'}`}>
                             {order.orderStatus?.replace(/_/g,' ')}
                           </span>
@@ -254,7 +316,7 @@ const BuyerDashboard = () => {
                         <div className="ml-auto flex items-center gap-2">
                           {order.chatRoom && (
                             <Link to={`/chat/${order.chatRoom}`}
-                              className="flex items-center space-x-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100">
+                              className="flex items-center space-x-2 px-4 py-2 bg-amber-50 text-amber-800 rounded-lg text-sm font-medium hover:bg-amber-100">
                               <FiMessageCircle className="h-3 w-3" /><span>Chat</span>
                             </Link>
                           )}
@@ -291,7 +353,7 @@ const BuyerDashboard = () => {
                 <div className="text-center py-20 bg-white rounded-2xl shadow-sm">
                   <FiHeart className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500 mb-4">Your wishlist is empty</p>
-                  <Link to="/products" className="px-6 py-3 bg-blue-600 text-white rounded-xl font-medium inline-block">Browse Products</Link>
+                  <Link to="/products" className="px-6 py-3 bg-amber-700 text-white rounded-xl font-medium inline-block">Browse Products</Link>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -317,7 +379,7 @@ const BuyerDashboard = () => {
               <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">Saved Addresses</h1>
                 <button onClick={() => setShowAddressForm(true)}
-                  className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700">
+                  className="flex items-center space-x-2 px-5 py-2.5 bg-amber-700 text-white rounded-xl font-medium hover:bg-amber-800">
                   <FiPlus /><span>Add Address</span>
                 </button>
               </div>
@@ -338,7 +400,7 @@ const BuyerDashboard = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
                         <input value={newAddress[f.key]}
                           onChange={e => setNewAddress({...newAddress, [f.key]: e.target.value})}
-                          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-blue-500 outline-none" />
+                          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none" />
                       </div>
                     ))}
                     <div className="col-span-2 flex items-center space-x-2">
@@ -350,7 +412,7 @@ const BuyerDashboard = () => {
                   </div>
                   <div className="flex space-x-3 mt-4">
                     <button onClick={() => setShowAddressForm(false)} className="flex-1 py-2.5 border-2 border-gray-300 rounded-xl text-gray-700">Cancel</button>
-                    <button onClick={handleAddAddress} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-medium">Save Address</button>
+                    <button onClick={handleAddAddress} className="flex-1 py-2.5 bg-amber-700 text-white rounded-xl font-medium">Save Address</button>
                   </div>
                 </div>
               )}
@@ -384,7 +446,7 @@ const BuyerDashboard = () => {
                 <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
                 {!profileEditing && (
                   <button onClick={() => setProfileEditing(true)}
-                    className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700">
+                    className="flex items-center space-x-2 px-5 py-2.5 bg-amber-700 text-white rounded-xl font-medium hover:bg-amber-800">
                     <FiEdit /><span>Edit</span>
                   </button>
                 )}
@@ -401,19 +463,19 @@ const BuyerDashboard = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
                         <input value={profileData[f.key]}
                           onChange={e => setProfileData({...profileData, [f.key]: e.target.value})}
-                          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-blue-500 outline-none" />
+                          className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none" />
                       </div>
                     ))}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
                       <textarea value={profileData.bio} rows={3}
                         onChange={e => setProfileData({...profileData, bio: e.target.value})}
-                        className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-blue-500 outline-none resize-none" />
+                        className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none resize-none" />
                     </div>
                     <div className="flex space-x-4 pt-2">
                       <button onClick={() => setProfileEditing(false)} className="flex-1 py-3 border-2 border-gray-300 rounded-xl font-medium text-gray-700">Cancel</button>
                       <button onClick={handleSaveProfile} disabled={savingProfile}
-                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50">
+                        className="flex-1 py-3 bg-amber-700 text-white rounded-xl font-medium hover:bg-amber-800 disabled:opacity-50">
                         {savingProfile ? 'Saving...' : 'Save Profile'}
                       </button>
                     </div>
@@ -421,8 +483,19 @@ const BuyerDashboard = () => {
                 ) : (
                   <div className="space-y-4">
                     <div className="flex items-center space-x-4">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xl font-bold">
-                        {user?.name?.[0]}
+                      <div className="relative">
+                        {user?.avatar?.url ? (
+                          <img src={user.avatar.url} alt={user.name} className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-lg" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xl font-bold border-4 border-white shadow-lg">
+                            {user?.name?.[0]}
+                          </div>
+                        )}
+                        <button onClick={() => avatarInputRef.current?.click()}
+                          className="absolute -bottom-1 -right-1 w-6 h-6 bg-amber-600 rounded-full flex items-center justify-center text-white shadow-md hover:bg-amber-700 transition-colors">
+                          {uploadingAvatar ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> : <span style={{fontSize:'10px'}}>📷</span>}
+                        </button>
+                        <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleUploadAvatar} />
                       </div>
                       <div>
                         <h2 className="text-xl font-bold text-gray-900">{user?.name}</h2>
@@ -487,6 +560,8 @@ const BuyerDashboard = () => {
           </motion.div>
         </div>
       )}
+        
+        </div>
     </div>
   );
 };
