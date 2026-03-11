@@ -17,6 +17,14 @@ const orderItemSchema = new mongoose.Schema({
   totalPrice: { type: Number, required: true },
 });
 
+
+const orderReviewSchema = new mongoose.Schema({
+  rating:    { type: Number, required: true, min: 1, max: 5 },
+  comment:   { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
 const orderSchema = new mongoose.Schema({
   orderId: { type: String, unique: true, required: true },
   buyer:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -56,6 +64,13 @@ const orderSchema = new mongoose.Schema({
   couponCode:   { type: String, default: '' },
   notes:        { type: String, default: '' },
 
+
+  isCustomized:           { type: Boolean, default: false },
+  customizationRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomizationRequest', default: null },
+  customizationPrice:     { type: Number, default: 0 },
+
+  review: { type: orderReviewSchema, default: null },
+  reviewedAt: { type: Date, default: null },
   estimatedDelivery: { type: Date,   default: null },
   trackingNumber:    { type: String, default: '' },
   trackingUrl:       { type: String, default: '' },

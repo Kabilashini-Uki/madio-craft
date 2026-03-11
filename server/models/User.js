@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema({
   },
   avatar: {
     public_id: { type: String, default: '' },
-    url:       { type: String, default: 'https://res.cloudinary.com/demo/image/upload/v1631234567/default-avatar.png' },
+    url:       { type: String, default: '' },
   },
   coverImage: {
     public_id: { type: String, default: '' },
@@ -70,9 +70,14 @@ const userSchema = new mongoose.Schema({
     }],
     wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
   },
+  originalRole:     { type: String, default: '' },
+  activeRole:       { type: String, default: '' },
   isSuspended:      { type: Boolean, default: false },
   suspendedAt:      { type: Date,    default: null },
   suspensionReason: { type: String,  default: '' },
+  // Login rate limiting
+  loginAttempts:    { type: Number,  default: 0 },
+  loginLockedUntil: { type: Date,    default: null },
   createdAt:        { type: Date,    default: Date.now },
 });
 

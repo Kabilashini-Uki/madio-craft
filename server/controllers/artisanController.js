@@ -26,7 +26,7 @@ export const getArtisans = async (req, res) => {
 
         const skip = (page - 1) * limit;
         const artisans = await User.find(filter)
-            .select('-password')
+            .select('-password -loginAttempts -loginLockedUntil')
             .skip(skip)
             .limit(Number(limit));
 
@@ -51,7 +51,12 @@ export const getArtisans = async (req, res) => {
 export const getArtisan = async (req, res) => {
     try {
         const artisanUser = await User.findById(req.params.id).select('-password');
-        if (!artisanUser || artisanUser.role !== 'artisan') {
+        // Allow role='artisan' OR originalRole='artisan' (buyer-mode switch)
+        const isArtisan = artisanUser && (
+          artisanUser.role === 'artisan' ||
+          artisanUser.originalRole === 'artisan'
+        );
+        if (!artisanUser || !isArtisan) {
             return res.status(404).json({ message: 'Artisan not found' });
         }
 

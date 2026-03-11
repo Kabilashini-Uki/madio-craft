@@ -94,7 +94,7 @@ const artisanSchema = new mongoose.Schema({
 
   profileImage: {
     public_id: { type: String, default: '' },
-    url: { type: String, default: 'https://res.cloudinary.com/demo/image/upload/v1631234567/default-avatar.png' },
+    url: { type: String, default: '' },
   },
   coverImage: {
     public_id: { type: String, default: '' },

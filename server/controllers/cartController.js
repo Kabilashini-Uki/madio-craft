@@ -3,7 +3,17 @@ import Cart    from '../models/Cart.js';
 import Product from '../models/Product.js';
 
 const SRI_LANKA_ZONES = {
-  'Batticaloa': 'eastern', 'Ampara': 'eastern', 'Trincomalee': 'eastern',};
+  'Colombo': 'colombo', 'Gampaha': 'urban', 'Kalutara': 'urban',
+  'Kandy': 'central', 'Matale': 'central', 'Nuwara Eliya': 'central',
+  'Galle': 'southern', 'Matara': 'southern', 'Hambantota': 'southern',
+  'Jaffna': 'northern', 'Kilinochchi': 'northern', 'Mannar': 'northern',
+  'Mullaitivu': 'northern', 'Vavuniya': 'northern',
+  'Batticaloa': 'eastern', 'Ampara': 'eastern', 'Trincomalee': 'eastern',
+  'Kurunegala': 'north_western', 'Puttalam': 'north_western',
+  'Anuradhapura': 'north_central', 'Polonnaruwa': 'north_central',
+  'Badulla': 'uva', 'Moneragala': 'uva',
+  'Ratnapura': 'sabaragamuwa', 'Kegalle': 'sabaragamuwa',
+};
 
 export const getCart = async (req, res) => {
   try {

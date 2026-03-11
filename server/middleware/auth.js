@@ -31,9 +31,11 @@ export const protect = async (req, res, next) => {
 };
 
 export const authorize = (...roles) => (req, res, next) => {
-  if (!req.user || !roles.includes(req.user.role)) {
+  // Use activeRole when set (role-switched users), otherwise fall back to their base role
+  const effectiveRole = req.user?.activeRole || req.user?.role;
+  if (!req.user || !roles.includes(effectiveRole)) {
     return res.status(403).json({
-      message: `User role '${req.user?.role}' is not authorized to access this route`,
+      message: `User role '${effectiveRole}' is not authorized to access this route`,
     });
   }
   next();

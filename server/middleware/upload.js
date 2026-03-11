@@ -1,47 +1,62 @@
-// middleware/upload.js
-import { v2 as cloudinary }      from 'cloudinary';
-import { CloudinaryStorage }     from 'multer-storage-cloudinary';
-import multer                    from 'multer';
+// middleware/upload.js  — local disk storage (no Cloudinary)
+import multer from 'multer';
+import path   from 'path';
+import fs     from 'fs';
+import { fileURLToPath } from 'url';
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const productStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder:           'madiocraft/products',
-    allowed_formats:  ['jpg', 'jpeg', 'png', 'webp'],
-    transformation:   [{ width: 1000, height: 1000, crop: 'limit' }],
-  },
-});
+// Root uploads directory  →  backend/uploads/
+const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
 
-const avatarStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder:          'madiocraft/avatars',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    transformation:  [{ width: 300, height: 300, crop: 'fill' }],
-  },
-});
+// Ensure sub-folders exist on startup
+['products', 'avatars', 'covers', 'chat'].forEach(sub =>
+  fs.mkdirSync(path.join(UPLOADS_ROOT, sub), { recursive: true })
+);
 
-const chatStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder:          'madiocraft/chat',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx'],
-    resource_type:   'auto',
-  },
-});
+/** Return a multer diskStorage engine that saves into uploads/<folder>/ */
+const diskEngine = (folder) =>
+  multer.diskStorage({
+    destination: (_req, _file, cb) =>
+      cb(null, path.join(UPLOADS_ROOT, folder)),
+    filename: (_req, file, cb) => {
+      const ext  = path.extname(file.originalname).toLowerCase() || '.jpg';
+      const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+      cb(null, name);
+    },
+  });
 
-const uploadProduct      = multer({ storage: productStorage,  limits: { fileSize: 5  * 1024 * 1024 } });
-const uploadAvatarMulter = multer({ storage: avatarStorage,   limits: { fileSize: 2  * 1024 * 1024 } });
-const uploadChatMulter   = multer({ storage: chatStorage,     limits: { fileSize: 10 * 1024 * 1024 } });
+const imgFilter = (_req, file, cb) => {
+  if (file.mimetype.startsWith('image/')) cb(null, true);
+  else cb(new Error('Only image files are allowed'), false);
+};
 
-export const uploadProductImages  = uploadProduct.array('images', 10);
-export const uploadSingleImage    = uploadProduct.single('image');
-export const uploadAvatar         = uploadAvatarMulter.single('avatar');
-export const uploadChatAttachment = uploadChatMulter.single('file');
-export { cloudinary };
+export const uploadProductImages  = multer({ storage: diskEngine('products'), fileFilter: imgFilter, limits: { fileSize: 8  * 1024 * 1024 } }).array('images', 10);
+export const uploadSingleImage    = multer({ storage: diskEngine('products'), fileFilter: imgFilter, limits: { fileSize: 8  * 1024 * 1024 } }).single('image');
+export const uploadAvatar         = multer({ storage: diskEngine('avatars'),  fileFilter: imgFilter, limits: { fileSize: 5  * 1024 * 1024 } }).single('avatar');
+export const uploadCover          = multer({ storage: diskEngine('covers'),   fileFilter: imgFilter, limits: { fileSize: 8  * 1024 * 1024 } }).single('coverImage');
+export const uploadChatAttachment = multer({ storage: diskEngine('chat'),     fileFilter: imgFilter, limits: { fileSize: 10 * 1024 * 1024 } }).single('file');
+
+/**
+ * Convert a saved file into a { url, public_id } object that the rest of
+ * the app expects.  `req` is needed to build the absolute URL.
+ * public_id stores the relative path so it can be deleted later if needed.
+ */
+export const fileToImageObj = (req, file, subfolder) => {
+  const relativePath = `${subfolder}/${file.filename}`;
+  const host = `${req.protocol}://${req.get('host')}`;
+  return {
+    url:       `${host}/uploads/${relativePath}`,
+    public_id: relativePath,
+  };
+};
+
+/** Delete a locally-stored image by its public_id (relative path) */
+export const deleteLocalFile = (publicId) => {
+  try {
+    const fullPath = path.join(UPLOADS_ROOT, publicId);
+    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  } catch (e) {
+    console.warn('Could not delete local file:', publicId, e.message);
+  }
+};

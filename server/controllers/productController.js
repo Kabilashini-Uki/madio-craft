@@ -1,24 +1,54 @@
-// controllers/productController.js
-import Product from '../models/Product.js';
-import Artisan from '../models/Artisan.js';
+// controllers/productController.js  — local disk storage (no Cloudinary)
+import Product              from '../models/Product.js';
+import Artisan              from '../models/Artisan.js';
+import CustomizationRequest from '../models/CustomizationRequest.js';
+import { fileToImageObj }   from '../middleware/upload.js';
+
+/** Coerce raw FormData strings into the types Mongoose expects */
+const coerceProductFields = (body) => {
+  const d = { ...body };
+  if (d.price)          d.price          = Number(d.price);
+  if (d.stock !== undefined) d.stock     = Number(d.stock);
+  // Boolean — FormData sends 'true' / 'false' as strings
+  if (d.isCustomizable !== undefined)
+    d.isCustomizable = d.isCustomizable === true || d.isCustomizable === 'true';
+  // Arrays — frontend sends comma-separated strings or JSON arrays
+  ['materials', 'tags'].forEach(key => {
+    if (d[key] !== undefined) {
+      if (Array.isArray(d[key])) {
+        d[key] = d[key].flatMap(v => v.split(',').map(s => s.trim()).filter(Boolean));
+      } else if (typeof d[key] === 'string') {
+        try { d[key] = JSON.parse(d[key]); }
+        catch (_) { d[key] = d[key].split(',').map(s => s.trim()).filter(Boolean); }
+      }
+    }
+  });
+  return d;
+};
 
 export const createProduct = async (req, res) => {
   try {
-    const productData = { ...req.body, artisan: req.user.id };
-    if (productData.price) productData.price = Number(productData.price);
-    if (productData.stock) productData.stock = Number(productData.stock);
+    const productData = { ...coerceProductFields(req.body), artisan: req.user.id };
 
-    if (req.body.images) {
+    if (req.files?.length) {
+      // New files uploaded to disk — build image objects
+      productData.images = req.files.map((f, i) => ({
+        ...fileToImageObj(req, f, 'products'),
+        isPrimary: i === 0,
+      }));
+    } else if (req.body.images) {
+      // JSON array of kept images passed as a string
       try {
-        const bodyImages = typeof req.body.images === 'string' ? JSON.parse(req.body.images) : req.body.images;
-        if (Array.isArray(bodyImages) && bodyImages.length > 0) {
-          productData.images = bodyImages.map((img) => ({ public_id: img.public_id || '', url: img.url || img.path || img.secure_url || '', isPrimary: !!img.isPrimary }));
-        }
-      } catch (_) { /* fall through to files */ }
-    }
-
-    if ((!productData.images || !productData.images.length) && req.files?.length) {
-      productData.images = req.files.map((f, i) => ({ public_id: f.filename || f.public_id || '', url: f.path || f.secure_url || '', isPrimary: i === 0 }));
+        const bodyImages = typeof req.body.images === 'string'
+          ? JSON.parse(req.body.images)
+          : req.body.images;
+        if (Array.isArray(bodyImages) && bodyImages.length > 0)
+          productData.images = bodyImages.map((img, i) => ({
+            public_id: img.public_id || '',
+            url:       img.url       || '',
+            isPrimary: i === 0,
+          }));
+      } catch (_) {}
     }
 
     const product = await Product.create(productData);
@@ -50,7 +80,7 @@ export const getProducts = async (req, res) => {
     if (search)               filter.$or = [{ name: { $regex: search, $options: 'i' } }, { description: { $regex: search, $options: 'i' } }, { tags: { $regex: search, $options: 'i' } }];
 
     const skip     = (page - 1) * limit;
-    const products = await Product.find(filter).populate('artisan', 'name avatar artisanProfile.businessName').sort(sort).skip(skip).limit(Number(limit));
+    const products = await Product.find(filter).populate('artisan', 'name avatar location artisanProfile').sort(sort).skip(skip).limit(Number(limit));
     const total    = await Product.countDocuments(filter);
 
     res.json({ success: true, products, pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / limit) } });
@@ -81,23 +111,29 @@ export const updateProduct = async (req, res) => {
     if (!product) return res.status(404).json({ message: 'Product not found' });
     if (product.artisan.toString() !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
 
-    if (req.body.images) {
+    if (req.files?.length) {
+      // Append newly uploaded images
+      const newImages = req.files.map(f => ({
+        ...fileToImageObj(req, f, 'products'),
+        isPrimary: false,
+      }));
+      product.images = [...product.images, ...newImages];
+    } else if (req.body.images) {
       try {
         const bodyImages = typeof req.body.images === 'string' ? JSON.parse(req.body.images) : req.body.images;
         if (Array.isArray(bodyImages) && bodyImages.length > 0) {
-          const parsed = bodyImages.map((img) => ({ public_id: img.public_id || '', url: img.url || img.path || img.secure_url || '', isPrimary: !!img.isPrimary }));
-          product.images = [...product.images, ...parsed];
+          product.images = bodyImages.map((img, i) => ({
+            public_id: img.public_id || '',
+            url:       img.url       || '',
+            isPrimary: !!img.isPrimary,
+          }));
         }
-      } catch (_) { /* ignore */ }
+      } catch (_) {}
     }
 
-    if (req.files?.length) {
-      const newImages = req.files.map((f) => ({ public_id: f.filename || '', url: f.path || '', isPrimary: false }));
-      product.images = [...product.images, ...newImages];
-    }
-
-    Object.keys(req.body).forEach((key) => {
-      if (key !== 'images') product[key] = ['price', 'stock'].includes(key) ? Number(req.body[key]) : req.body[key];
+    const coerced = coerceProductFields(req.body);
+    Object.keys(coerced).forEach((key) => {
+      if (key !== 'images') product[key] = coerced[key];
     });
 
     await product.save();
@@ -170,6 +206,146 @@ export const getCategoryCounts = async (req, res) => {
     res.json({ success: true, counts });
   } catch (error) {
     console.error('Failed to aggregate category counts', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// POST /api/products/:id/customization-request
+export const sendCustomizationRequest = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id).populate('artisan', 'name _id avatar');
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    if (!product.artisan?._id) return res.status(400).json({ message: 'This product has no artisan assigned' });
+    // Prevent artisan from sending a request to themselves
+    if (String(product.artisan._id) === String(req.user._id)) {
+      return res.status(400).json({ message: "You can't send a customization request for your own product" });
+    }
+
+    const { color, size, notes } = req.body;
+
+    const parts = [];
+    if (color) parts.push(`Colour: ${color}`);
+    if (size)  parts.push(`Size: ${size}`);
+    if (notes) parts.push(`Notes: ${notes}`);
+    const message = parts.length ? parts.join(' · ') : 'No specific options provided';
+
+    const custReq = await CustomizationRequest.create({
+      sender:       req.user._id,
+      senderName:   req.user.name,
+      senderAvatar: req.user.avatar?.url || '',
+      product:      product._id,
+      productName:  product.name,
+      artisan:      product.artisan._id,
+      color:        color || '',
+      size:         size  || '',
+      notes:        notes || '',
+      message,
+      status:    'pending',
+      timestamp: new Date(),
+    });
+
+    const socketPayload = {
+      requestId: custReq._id,
+      sender: { id: req.user._id, name: req.user.name, avatar: req.user.avatar?.url || '' },
+      product: { id: product._id, name: product.name, image: product.images?.[0]?.url || '' },
+      message, color: color || '', size: size || '', notes: notes || '',
+      timestamp: custReq.timestamp, status: 'pending',
+    };
+
+    try {
+      const io = req.app.get('io');
+      if (io) io.to(`user-${product.artisan._id}`).emit('customization-request', socketPayload);
+    } catch (e) { console.warn('Socket customization notify failed:', e.message); }
+
+    res.json({ success: true, message: 'Customization request sent to artisan', requestId: custReq._id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// POST /api/products/:id/customization-response
+export const respondToCustomization = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    const { available, buyerId, requestId, customizationPrice } = req.body;
+    const newStatus = available ? 'accepted' : 'rejected';
+    const priceToSet = available && customizationPrice ? Number(customizationPrice) : 0;
+
+    let custReq = null;
+    const updateFields = { status: newStatus, respondedAt: new Date() };
+    if (priceToSet > 0) updateFields.customizationPrice = priceToSet;
+
+    if (requestId) {
+      custReq = await CustomizationRequest.findByIdAndUpdate(
+        requestId, updateFields, { new: true }
+      );
+    } else {
+      custReq = await CustomizationRequest.findOneAndUpdate(
+        { product: product._id, sender: buyerId, status: 'pending' },
+        updateFields,
+        { new: true, sort: { timestamp: -1 } }
+      );
+    }
+
+    const socketPayload = {
+      requestId:          String(custReq?._id || requestId || ''),
+      productId:          product._id,
+      productName:        product.name,
+      productImage:       product.images?.[0]?.url || '',
+      artisan:            { id: req.user._id, name: req.user.name },
+      available,          status: newStatus, timestamp: new Date(),
+      customizationPrice: priceToSet,
+      color:              custReq?.color || '',
+      size:               custReq?.size  || '',
+      notes:              custReq?.notes || '',
+    };
+
+    try {
+      const io = req.app.get('io');
+      if (io) io.to(`user-${buyerId}`).emit('customization-response', socketPayload);
+    } catch (e) { console.warn('Socket customization response failed:', e.message); }
+
+    res.json({ success: true, available, status: newStatus, customizationPrice: priceToSet, message: available ? 'Customization accepted' : 'Customization unavailable' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// GET /api/products/customization-requests  (artisan)
+export const getCustomizationRequests = async (req, res) => {
+  try {
+    const { status } = req.query;
+    const filter = { artisan: req.user._id };
+    if (status) filter.status = status;
+
+    const requests = await CustomizationRequest.find(filter)
+      .populate('sender',  'name avatar')
+      .populate('product', 'name images price')
+      .sort('-timestamp')
+      .limit(100);
+
+    res.json({ success: true, requests });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// GET /api/products/my-customization-requests  (buyer)
+export const getMyCustomizationRequests = async (req, res) => {
+  try {
+    const requests = await CustomizationRequest.find({ sender: req.user._id })
+      .populate('product', 'name images price artisan')
+      .sort('-timestamp')
+      .limit(50);
+
+    res.json({ success: true, requests });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 };
