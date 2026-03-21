@@ -9,10 +9,10 @@ import { protect } from '../middleware/auth.js';
 const router = Router();
 router.use(protect);
 
-router.post('/room',                  getOrCreateRoom);
-router.post('/customization/room',    createCustomizationRoom);
-router.get('/rooms',                  getUserRooms);
-router.get('/rooms/:roomId/verify',   async (req, res) => {
+router.post('/room', getOrCreateRoom);
+router.post('/customization/room', createCustomizationRoom);
+router.get('/rooms', getUserRooms);
+router.get('/rooms/:roomId/verify', async (req, res) => {
   try {
     const { ChatRoom } = await import('../models/ChatRoom.js');
     const room = await ChatRoom.findById(req.params.roomId);
@@ -22,8 +22,8 @@ router.get('/rooms/:roomId/verify',   async (req, res) => {
   } catch { res.json({ hasAccess: false }); }
 });
 router.get('/rooms/:roomId/messages', getRoomMessages);
-router.post('/messages',              sendMessageWithSocket);  // primary send endpoint
-router.post('/message',               sendMessage);            // legacy fallback
+router.post('/messages', sendMessageWithSocket);  // primary send endpoint
+router.post('/message', sendMessage);            // legacy fallback
 
 // POST /api/chat/request-response — artisan responds to a message-based custom request
 router.post('/request-response', async (req, res) => {
@@ -32,15 +32,41 @@ router.post('/request-response', async (req, res) => {
     const artisanId = req.user.id;
     const artisanName = req.user.name;
     const io = req.app.get('io');
+    const actualBuyerId = String(buyerId);
+
+    // 5. Create persistent notification for the buyer
+    try {
+      const { default: Notification } = await import('../models/Notification.js');
+      await Notification.create({
+        user: actualBuyerId,
+        userModel: 'User',
+        type: 'customization-response',
+        title: available ? 'Customisation Accepted!' : 'Customisation Unavailable',
+        body: available
+          ? `${artisanName || 'The artisan'} accepted your message-based customisation request.`
+          : `${artisanName || 'The artisan'} cannot fulfil your request at this time.`,
+        data: {
+          requestId: roomId,
+          roomId,
+          artisan: { id: artisanId, name: artisanName },
+          available,
+          status: available ? 'accepted' : 'rejected',
+          isChatRequest: true,
+        }
+      });
+    } catch (err) {
+      console.warn('Chat response notification failed:', err.message);
+    }
+
     if (io && buyerId) {
-      io.to(`user-${buyerId}`).emit('customization-response', {
-        requestId:   roomId,
-        productId:   null,
+      io.to(`user-${actualBuyerId}`).emit('customization-response', {
+        requestId: roomId,
+        productId: null,
         productName: 'your message',
-        artisan:     { id: artisanId, name: artisanName },
+        artisan: { id: artisanId, name: artisanName },
         available,
-        status:      available ? 'accepted' : 'rejected',
-        timestamp:   new Date(),
+        status: available ? 'accepted' : 'rejected',
+        timestamp: new Date(),
         roomId,
         isChatRequest: true,
       });

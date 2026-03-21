@@ -1,12 +1,13 @@
 // routes/productRoutes.js
-import { Router }             from 'express';
+import { Router } from 'express';
 import {
   createProduct, getProducts, getProduct,
   updateProduct, deleteProduct, addReview,
-  getMyProducts, getCategoryCounts,
+  getMyProducts, getCategoryCounts, getCategories,
   sendCustomizationRequest, respondToCustomization,
   getCustomizationRequests, getMyCustomizationRequests,
-}                             from '../controllers/productController.js';
+  getCustomizationRequest,
+} from '../controllers/productController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { uploadProductImages } from '../middleware/upload.js';
 
@@ -30,23 +31,25 @@ const canSendCustomization = (req, res, next) => {
 };
 
 // ── Static / named routes MUST come before /:id ──────────────────
-router.get('/',                getProducts);
-router.get('/counts',          getCategoryCounts);
+router.get('/', getProducts);
+router.get('/counts', getCategoryCounts);
 router.get('/category-counts', getCategoryCounts);
-router.get('/my',              protect, artisanBaseRole, getMyProducts);
+router.get('/categories', getCategories);
+router.get('/my', protect, artisanBaseRole, getMyProducts);
 
 // Customization request queries
-router.get('/customization-requests',    protect, artisanBaseRole,      getCustomizationRequests);
-router.get('/my-customization-requests', protect, authorize('buyer'),   getMyCustomizationRequests);
+router.get('/customization-requests', protect, artisanBaseRole, getCustomizationRequests);
+router.get('/my-customization-requests', protect, authorize('buyer'), getMyCustomizationRequests);
+router.get('/customization-request/:id', protect, getCustomizationRequest);
 
 // ── Dynamic id route ─────────────────────────────────────────────
-router.get('/:id',             getProduct);
+router.get('/:id', getProduct);
 
-router.post('/',               protect, artisanBaseRole, uploadProductImages, createProduct);
-router.put('/:id',             protect, artisanBaseRole, uploadProductImages, updateProduct);
-router.delete('/:id',          protect, authorize('artisan', 'admin'), deleteProduct);
-router.post('/:id/reviews',    protect, addReview);
-router.post('/:id/customization-request',  protect, sendCustomizationRequest);
+router.post('/', protect, artisanBaseRole, uploadProductImages, createProduct);
+router.put('/:id', protect, artisanBaseRole, uploadProductImages, updateProduct);
+router.delete('/:id', protect, authorize('artisan', 'admin'), deleteProduct);
+router.post('/:id/reviews', protect, addReview);
+router.post('/:id/customization-request', protect, sendCustomizationRequest);
 router.post('/:id/customization-response', protect, artisanBaseRole, respondToCustomization);
 
 export default router;

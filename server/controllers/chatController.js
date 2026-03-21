@@ -1,6 +1,7 @@
 // controllers/chatController.js
 import { ChatRoom, Message } from '../models/ChatRoom.js';
 import User from '../models/User.js';
+import Notification from '../models/Notification.js';
 
 // POST /api/chat/customization/room
 // Buyer starts a customization chat with a specific artisan.
@@ -161,13 +162,22 @@ export const getOrCreateRoom = async (req, res) => {
       const io = req.app.get('io');
       const buyer = await User.findById(buyerId).select('name');
       if (io) {
-        io.to(`user-${artisanId}`).emit('new-chat-started', {
+        const payload = {
           message: `${buyer?.name || 'A buyer'} started a chat with you`,
           roomId: room._id,
           buyerName: buyer?.name,
+        };
+        await Notification.create({
+          user: artisanId,
+          userModel: 'Artisan',
+          type: 'chat',
+          title: 'New Chat Started',
+          body: payload.message,
+          data: payload
         });
+        io.to(`user-${artisanId}`).emit('new-chat-started', payload);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     res.json({ success: true, room });
   } catch (error) {
@@ -217,16 +227,25 @@ export const sendMessageWithSocket = async (req, res) => {
         io.to(String(roomId)).emit('receive-message', msgPayload);
 
         // Personal notification to the other participant(s)
-        room.participants.forEach(p => {
+        for (const p of room.participants) {
           const pid = String(p._id || p);
           if (pid !== String(req.user.id)) {
-            io.to(`user-${pid}`).emit('new-message-notification', {
+            const payload = {
               roomId: String(roomId),
               message: (message || '').substring(0, 80),
               senderName: populated.sender?.name,
+            };
+            await Notification.create({
+              user: pid,
+              userModel: 'User',
+              type: 'chat',
+              title: 'New Message',
+              body: `${payload.senderName}: ${payload.message}`,
+              data: payload
             });
+            io.to(`user-${pid}`).emit('new-message-notification', payload);
           }
-        });
+        }
       }
     } catch (e) { console.warn('Socket emit error:', e.message); }
 

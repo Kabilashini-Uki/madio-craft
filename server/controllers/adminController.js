@@ -212,8 +212,9 @@ export const getArtisanStats = async (req, res) => {
       if (!monthly[key]) monthly[key] = { month: key, count: 0, revenue: 0, commission: 0, quantity: 0 };
       monthly[key].count++;
       if (o.orderStatus === 'delivered') {
-        monthly[key].revenue += o.totalAmount || 0;
-        monthly[key].commission += (o.totalAmount || 0) * 0.1;
+        const amt = o.totalAmount || o.finalAmount || 0;
+        monthly[key].revenue += amt;
+        monthly[key].commission += amt * 0.1;
       }
       monthly[key].quantity += o.items?.reduce((s, i) => s + i.quantity, 0) || 0;
     });

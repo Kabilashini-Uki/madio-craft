@@ -1,13 +1,19 @@
 // routes/userRoutes.js  — local disk storage (no Cloudinary)
 import { Router } from 'express';
-import path       from 'path';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import { fileURLToPath } from 'url';
-import User       from '../models/User.js';
-import Artisan    from '../models/Artisan.js';
+import User from '../models/User.js';
+import Artisan from '../models/Artisan.js';
 import { isBatticaloa } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
-import multer      from 'multer';
-import fs          from 'fs';
+import {
+  uploadAvatar,
+  uploadCover,
+  uploadChatAttachment,
+  fileToImageObj
+} from '../middleware/upload.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
@@ -22,7 +28,7 @@ const diskEngine = (folder) =>
     destination: (_req, _file, cb) =>
       cb(null, path.join(UPLOADS_ROOT, folder)),
     filename: (_req, file, cb) => {
-      const ext  = path.extname(file.originalname).toLowerCase() || '.jpg';
+      const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
       const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
       cb(null, name);
     },
@@ -34,12 +40,12 @@ const imgFilter = (_req, file, cb) => {
 };
 
 const uploadAvatarMw = multer({ storage: diskEngine('avatars'), fileFilter: imgFilter, limits: { fileSize: 5 * 1024 * 1024 } }).single('avatar');
-const uploadCoverMw  = multer({ storage: diskEngine('covers'),  fileFilter: imgFilter, limits: { fileSize: 8 * 1024 * 1024 } }).fields([{name:'coverImage',maxCount:1},{name:'cover',maxCount:1}]);
+const uploadCoverMw = multer({ storage: diskEngine('covers'), fileFilter: imgFilter, limits: { fileSize: 8 * 1024 * 1024 } }).fields([{ name: 'coverImage', maxCount: 1 }, { name: 'cover', maxCount: 1 }]);
 
 const toImageObj = (req, file, subfolder) => {
   const host = `${req.protocol}://${req.get('host')}`;
   return {
-    url:       `${host}/uploads/${subfolder}/${file.filename}`,
+    url: `${host}/uploads/${subfolder}/${file.filename}`,
     public_id: `${subfolder}/${file.filename}`,
   };
 };
@@ -61,17 +67,17 @@ router.put('/profile', async (req, res) => {
     }
 
     const update = {};
-    if (name     !== undefined) update.name     = name;
-    if (bio      !== undefined) update.bio      = bio;
-    if (phone    !== undefined) update.phone    = phone;
+    if (name !== undefined) update.name = name;
+    if (bio !== undefined) update.bio = bio;
+    if (phone !== undefined) update.phone = phone;
     if (location !== undefined) update.location = location;
 
     if (artisanProfile) {
-      update['artisanProfile.businessName']      = artisanProfile.businessName;
-      update['artisanProfile.description']       = artisanProfile.description;
-      update['artisanProfile.specialties']       = artisanProfile.specialties;
+      update['artisanProfile.businessName'] = artisanProfile.businessName;
+      update['artisanProfile.description'] = artisanProfile.description;
+      update['artisanProfile.specialties'] = artisanProfile.specialties;
       update['artisanProfile.yearsOfExperience'] = artisanProfile.yearsOfExperience;
-      update['artisanProfile.socialLinks']       = artisanProfile.socialLinks;
+      update['artisanProfile.socialLinks'] = artisanProfile.socialLinks;
     }
 
     const user = await User.findByIdAndUpdate(req.user.id, { $set: update }, { new: true }).select('-password');
@@ -89,13 +95,27 @@ router.put('/profile', async (req, res) => {
 });
 
 // ── POST /api/users/avatar ────────────────────────────────────────
+// Accepts: multipart 'avatar' file  OR  JSON body { imageUrl: "https://..." }
 router.post('/avatar', (req, res) => {
   uploadAvatarMw(req, res, async (err) => {
     if (err) return res.status(400).json({ message: err.message || 'Upload error' });
-    if (!req.file) return res.status(400).json({ message: 'No image file received. Field name must be "avatar".' });
 
     try {
-      const { url, public_id } = toImageObj(req, req.file, 'avatars');
+      let url, public_id;
+
+      if (req.file) {
+        // File upload path
+        const host = `${req.protocol}://${req.get('host')}`;
+        url = `${host}/uploads/avatars/${req.file.filename}`;
+        public_id = `avatars/${req.file.filename}`;
+      } else if (req.body?.imageUrl) {
+        // URL-only path
+        url = req.body.imageUrl.trim();
+        public_id = '';
+      } else {
+        return res.status(400).json({ message: 'Provide an image file (field: "avatar") or { imageUrl } in the body.' });
+      }
+
       const user = await User.findByIdAndUpdate(
         req.user.id,
         { $set: { 'avatar.url': url, 'avatar.public_id': public_id } },
@@ -110,14 +130,28 @@ router.post('/avatar', (req, res) => {
 });
 
 // ── POST /api/users/cover ─────────────────────────────────────────
+// Accepts: multipart 'coverImage' file  OR  JSON body { imageUrl: "https://..." }
 router.post('/cover', (req, res) => {
   uploadCoverMw(req, res, async (err) => {
     if (err) return res.status(400).json({ message: err.message || 'Upload error' });
-    const file = (req.files?.coverImage?.[0]) || (req.files?.cover?.[0]);
-    if (!file) return res.status(400).json({ message: 'No image file received. Field name must be "coverImage" or "cover".' });
 
     try {
-      const { url, public_id } = toImageObj(req, file, 'covers');
+      let url, public_id;
+
+      const file = (req.files?.coverImage?.[0]) || (req.files?.cover?.[0]);
+      if (file) {
+        // File upload path
+        const host = `${req.protocol}://${req.get('host')}`;
+        url = `${host}/uploads/covers/${file.filename}`;
+        public_id = `covers/${file.filename}`;
+      } else if (req.body?.imageUrl) {
+        // URL-only path
+        url = req.body.imageUrl.trim();
+        public_id = '';
+      } else {
+        return res.status(400).json({ message: 'Provide an image file (field: "coverImage") or { imageUrl } in the body.' });
+      }
+
       const user = await User.findByIdAndUpdate(
         req.user.id,
         { $set: { 'coverImage.url': url, 'coverImage.public_id': public_id } },
@@ -170,6 +204,22 @@ router.get('/:id', async (req, res) => {
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
   }
+});
+
+// ── POST /api/users/upload/chat ──────────────────────────────────
+router.post('/upload/chat', (req, res) => {
+  uploadChatAttachment(req, res, async (err) => {
+    if (err) return res.status(400).json({ message: err.message || 'Upload error' });
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+    try {
+      const imgObj = fileToImageObj(req, req.file, 'chat');
+      res.json({ success: true, ...imgObj });
+    } catch (e) {
+      console.error('Chat upload error:', e);
+      res.status(500).json({ message: 'Server error' });
+    }
+  });
 });
 
 export default router;

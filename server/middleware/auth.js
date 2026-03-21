@@ -1,5 +1,5 @@
 // middleware/auth.js
-import jwt  from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
 export const protect = async (req, res, next) => {
@@ -33,7 +33,9 @@ export const protect = async (req, res, next) => {
 export const authorize = (...roles) => (req, res, next) => {
   // Use activeRole when set (role-switched users), otherwise fall back to their base role
   const effectiveRole = req.user?.activeRole || req.user?.role;
-  if (!req.user || !roles.includes(effectiveRole)) {
+  const isBaseAdmin = req.user?.role === 'admin';
+
+  if (!req.user || (!roles.includes(effectiveRole) && !isBaseAdmin)) {
     return res.status(403).json({
       message: `User role '${effectiveRole}' is not authorized to access this route`,
     });

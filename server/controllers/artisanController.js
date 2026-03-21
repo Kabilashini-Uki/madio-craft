@@ -6,22 +6,40 @@ import Product from '../models/Product.js';
 export const getArtisans = async (req, res) => {
     try {
         const { search, category, location, page = 1, limit = 12 } = req.query;
-        const filter = { role: 'artisan' };
+
+        // Base filter: either currently an artisan OR switched from artisan (buyer mode)
+        const baseFilter = {
+            $or: [
+                { role: 'artisan' },
+                { originalRole: 'artisan' }
+            ]
+        };
+
+        let filter = { ...baseFilter };
+        const additionalFilters = [];
 
         if (search) {
-            filter.$or = [
-                { name: { $regex: search, $options: 'i' } },
-                { 'artisanProfile.businessName': { $regex: search, $options: 'i' } },
-                { bio: { $regex: search, $options: 'i' } }
-            ];
+            additionalFilters.push({
+                $or: [
+                    { name: { $regex: search, $options: 'i' } },
+                    { 'artisanProfile.businessName': { $regex: search, $options: 'i' } },
+                    { bio: { $regex: search, $options: 'i' } }
+                ]
+            });
         }
 
         if (category && category !== 'all') {
-            filter['artisanProfile.specialties'] = category;
+            additionalFilters.push({ 'artisanProfile.specialties': category });
         }
 
         if (location && location !== 'all') {
-            filter.location = { $regex: location, $options: 'i' };
+            additionalFilters.push({ location: { $regex: location, $options: 'i' } });
+        }
+
+        if (additionalFilters.length > 0) {
+            filter = {
+                $and: [baseFilter, ...additionalFilters]
+            };
         }
 
         const skip = (page - 1) * limit;
@@ -53,8 +71,8 @@ export const getArtisan = async (req, res) => {
         const artisanUser = await User.findById(req.params.id).select('-password');
         // Allow role='artisan' OR originalRole='artisan' (buyer-mode switch)
         const isArtisan = artisanUser && (
-          artisanUser.role === 'artisan' ||
-          artisanUser.originalRole === 'artisan'
+            artisanUser.role === 'artisan' ||
+            artisanUser.originalRole === 'artisan'
         );
         if (!artisanUser || !isArtisan) {
             return res.status(404).json({ message: 'Artisan not found' });

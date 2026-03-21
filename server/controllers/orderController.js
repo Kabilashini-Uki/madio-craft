@@ -1,8 +1,9 @@
 // controllers/orderController.js
-import Order   from '../models/Order.js';
+import Order from '../models/Order.js';
 import Product from '../models/Product.js';
-import Cart    from '../models/Cart.js';
-import User    from '../models/User.js';
+import Cart from '../models/Cart.js';
+import User from '../models/User.js';
+import Notification from '../models/Notification.js';
 
 export const createOrder = async (req, res) => {
   try {
@@ -17,7 +18,7 @@ export const createOrder = async (req, res) => {
     if (!items?.length) return res.status(400).json({ message: 'No items in order' });
 
     let artisanUserId = null;
-    const orderItems  = [];
+    const orderItems = [];
 
     for (const item of items) {
       const product = await Product.findById(item.product).populate('artisan', '_id');
@@ -36,30 +37,30 @@ export const createOrder = async (req, res) => {
       }
 
       orderItems.push({
-        product:       product._id,
-        quantity:      item.quantity,
+        product: product._id,
+        quantity: item.quantity,
         customization: item.customization || {},
-        price:         item.price || product.price,
-        totalPrice:    (item.price || product.price) * item.quantity,
+        price: item.price || product.price,
+        totalPrice: (item.price || product.price) * item.quantity,
       });
     }
 
     const d = new Date();
-    const orderId = `ORD${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}${Math.floor(Math.random()*10000).toString().padStart(4,'0')}`;
+    const orderId = `ORD${d.getFullYear()}${(d.getMonth() + 1).toString().padStart(2, '0')}${d.getDate().toString().padStart(2, '0')}${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
 
     const order = await Order.create({
       orderId,
       buyer,
-      artisan:        artisanUserId,
-      items:          orderItems,
+      artisan: artisanUserId,
+      items: orderItems,
       shippingAddress,
-      paymentMethod:  'cod',
-      paymentStatus:  'pending',
-      orderStatus:    'pending',
-      subtotal:       subtotal || 0,
-      shippingCost:   shippingCost || 0,
-      vat:            tax || 0,
-      totalAmount:    totalAmount || 0,
+      paymentMethod: 'cod',
+      paymentStatus: 'pending',
+      orderStatus: 'pending',
+      subtotal: subtotal || 0,
+      shippingCost: shippingCost || 0,
+      vat: tax || 0,
+      totalAmount: totalAmount || 0,
       estimatedDelivery: new Date(Date.now() + 5 * 86400000),
     });
 
@@ -67,25 +68,34 @@ export const createOrder = async (req, res) => {
     try {
       const io = req.app.get('io');
       if (io) {
-        const buyerUser   = await User.findById(buyer).select('name avatar');
+        const buyerUser = await User.findById(buyer).select('name avatar');
         const productName = orderItems[0]?.product
           ? (await Product.findById(orderItems[0].product).select('name'))?.name || ''
           : '';
-        io.to(`user-${artisanUserId}`).emit('new-order', {
+        const socketPayload = {
           orderId,
-          orderDbId:   String(order._id),
-          amount:      totalAmount,
-          buyerName:   buyerUser?.name || 'A buyer',
+          orderDbId: String(order._id),
+          amount: totalAmount,
+          buyerName: buyerUser?.name || 'A buyer',
           buyerAvatar: buyerUser?.avatar?.url || '',
           productName,
-          itemCount:   orderItems.length,
-          message:     `New order #${orderId} from ${buyerUser?.name || 'a buyer'}`,
+          itemCount: orderItems.length,
+          message: `New order #${orderId} from ${buyerUser?.name || 'a buyer'}`,
+        };
+        await Notification.create({
+          user: artisanUserId,
+          userModel: 'User',
+          type: 'new-order',
+          title: 'New Order Received!',
+          body: socketPayload.message,
+          data: socketPayload
         });
+        io.to(`user-${artisanUserId}`).emit('new-order', socketPayload);
         // Also notify admin
         io.emit('admin-new-order', {
           orderId,
           buyerName: buyerUser?.name || 'A buyer',
-          amount:    totalAmount,
+          amount: totalAmount,
         });
       }
     } catch (e) { console.warn('Socket notify failed:', e.message); }
@@ -95,17 +105,43 @@ export const createOrder = async (req, res) => {
       await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } });
     }
 
-    // Clear cart
-    await Cart.findOneAndUpdate({ user: buyer }, { $set: { items: [] } });
+    // Clear ordered items from cart
+    const cart = await Cart.findOne({ user: buyer });
+    if (cart) {
+      const orderedProductIds = orderItems.map(item => String(item.product));
+      cart.items = cart.items.filter(item => !orderedProductIds.includes(String(item.product)));
+      await cart.save();
+    }
+
+    // Notify buyer via socket
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        const payload = {
+          orderId,
+          orderDbId: String(order._id),
+          totalAmount: totalAmount || 0,
+        };
+        await Notification.create({
+          user: buyer,
+          userModel: 'User',
+          type: 'order-status',
+          title: 'Order Confirmed',
+          body: `Your order #${orderId} was placed successfully!`,
+          data: payload
+        });
+        io.to(`user-${buyer}`).emit('order-status-update', { ...payload, status: 'pending' });
+      }
+    } catch (e) { console.warn('Socket notify failed:', e.message); }
 
     res.status(201).json({
       success: true,
       message: 'Order placed successfully! You will pay on delivery.',
       order: {
-        _id:            order._id,
-        orderId:        order.orderId,
-        totalAmount:    order.totalAmount,
-        paymentMethod:  'cod',
+        _id: order._id,
+        orderId: order.orderId,
+        totalAmount: order.totalAmount,
+        paymentMethod: 'cod',
         estimatedDelivery: order.estimatedDelivery,
       },
     });
@@ -131,7 +167,7 @@ export const getMyOrders = async (req, res) => {
 export const getOrder = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
-      .populate('buyer',   'name email')
+      .populate('buyer', 'name email')
       .populate('artisan', 'name artisanProfile.businessName')
       .populate('items.product', 'name images price');
 
@@ -171,7 +207,7 @@ export const updateOrderStatus = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
     const isArtisan = String(order.artisan) === String(req.user._id);
-    const isAdmin   = req.user.role === 'admin';
+    const isAdmin = req.user.role === 'admin';
     if (!isArtisan && !isAdmin) return res.status(403).json({ message: 'Not authorized' });
 
     order.orderStatus = status;
@@ -186,15 +222,25 @@ export const updateOrderStatus = async (req, res) => {
           .populate('artisan', 'name artisanProfile')
           .populate('items.product', 'name images');
         const payload = {
-          orderId:      order.orderId,
-          orderDbId:    String(order._id),
+          orderId: order.orderId,
+          orderDbId: String(order._id),
           status,
-          artisanName:  populated?.artisan?.name || '',
-          productName:  populated?.items?.[0]?.product?.name || '',
+          artisanName: populated?.artisan?.name || '',
+          productName: populated?.items?.[0]?.product?.name || '',
           productImage: populated?.items?.[0]?.product?.images?.[0]?.url || '',
-          totalAmount:  order.totalAmount,
-          isDelivered:  status === 'delivered',
+          totalAmount: order.totalAmount,
+          isDelivered: status === 'delivered',
         };
+        await Notification.create({
+          user: order.buyer,
+          userModel: 'User',
+          type: 'order-status',
+          title: status === 'delivered' ? '🎉 Order Delivered!' : 'Order Status Updated',
+          body: status === 'delivered'
+            ? `Your order #${order.orderId} has been delivered! Please confirm and leave a review.`
+            : `Order #${order.orderId} is now "${status}"`,
+          data: payload
+        });
         io.to(`user-${order.buyer}`).emit('order-status-update', payload);
         // Admin notification too
         io.emit('admin-order-status', { orderId: order.orderId, status });
@@ -236,13 +282,22 @@ export const cancelOrder = async (req, res) => {
     try {
       const io = req.app.get('io');
       if (io) {
-        io.to(`user-${order.artisan._id}`).emit('order-cancelled', {
+        const payload = {
           message: `Order ${order.orderId} was cancelled by buyer ${order.buyer.name}`,
           orderId: order.orderId,
+        };
+        await Notification.create({
+          user: order.artisan._id,
+          userModel: 'User',
+          type: 'order-cancelled',
+          title: 'Order Cancelled',
+          body: payload.message,
+          data: payload
         });
+        io.to(`user-${order.artisan._id}`).emit('order-cancelled', payload);
         io.emit('admin-order-cancelled', { orderId: order.orderId, buyerName: order.buyer.name });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     res.json({ success: true, message: 'Order cancelled', order });
   } catch (error) {
@@ -268,7 +323,7 @@ export const submitOrderReview = async (req, res) => {
       return res.status(400).json({ message: 'Can only review delivered orders' });
     if (order.review) return res.status(400).json({ message: 'Already reviewed' });
 
-    order.review    = { rating: Number(rating), comment: comment || '', createdAt: new Date() };
+    order.review = { rating: Number(rating), comment: comment || '', createdAt: new Date() };
     order.reviewedAt = new Date();
     await order.save();
 
@@ -279,7 +334,7 @@ export const submitOrderReview = async (req, res) => {
         const alreadyReviewed = product.ratings.reviews.find(r => String(r.user) === String(req.user._id));
         if (!alreadyReviewed) {
           product.ratings.reviews.push({ user: req.user._id, rating: Number(rating), comment: comment || '' });
-          product.ratings.count   = product.ratings.reviews.length;
+          product.ratings.count = product.ratings.reviews.length;
           product.ratings.average = product.ratings.reviews.reduce((a, r) => a + r.rating, 0) / product.ratings.reviews.length;
           await product.save();
         }
@@ -289,15 +344,24 @@ export const submitOrderReview = async (req, res) => {
     try {
       const io = req.app.get('io');
       if (io) {
-        io.to(`user-${order.artisan._id}`).emit('new-review', {
-          orderId:     order.orderId,
+        const payload = {
+          orderId: order.orderId,
           rating,
           comment,
-          buyerName:   req.user.name,
+          buyerName: req.user.name,
           productName: order.items[0]?.product?.name || '',
+        };
+        await Notification.create({
+          user: order.artisan._id,
+          userModel: 'User',
+          type: 'new-review',
+          title: '⭐ New Review!',
+          body: `${req.user.name || 'A buyer'} gave ${rating}★ for ${payload.productName}`,
+          data: payload
         });
+        io.to(`user-${order.artisan._id}`).emit('new-review', payload);
       }
-    } catch (_) {}
+    } catch (_) { }
 
     res.json({ success: true, message: 'Review submitted successfully', order });
   } catch (error) {
