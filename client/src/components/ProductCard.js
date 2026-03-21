@@ -1,51 +1,314 @@
 // src/components/ProductCard.js
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FiHeart, FiShoppingCart, FiEye, FiMapPin, FiCheckCircle } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotif } from '../context/NotifContext';
 import toast from 'react-hot-toast';
 import ProductCustomizationModal from './ProductCustomizationModal';
 
-/* ── Palette icon (always shown) ─────────────────────────────────── */
+// Inline styles
+const styles = {
+  card: {
+    background: 'white',
+    borderRadius: '16px',
+    overflow: 'hidden',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+    transition: 'box-shadow 0.3s, transform 0.3s',
+    cursor: 'pointer',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  imageContainer: {
+    position: 'relative',
+    height: '256px',
+    overflow: 'hidden',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    transition: 'transform 0.5s',
+  },
+  overlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(to top, rgba(0,0,0,0.3), transparent)',
+    opacity: 0,
+    transition: 'opacity 0.3s',
+  },
+  actions: {
+    position: 'absolute',
+    top: '16px',
+    right: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  actionButton: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    background: 'white',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    transition: 'all 0.2s',
+  },
+  wishlistButton: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    background: 'white',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    transition: 'all 0.2s',
+    color: '#6b7280',
+  },
+  wishlistActive: {
+    background: '#ef4444',
+    color: 'white',
+  },
+  categoryBadge: {
+    position: 'absolute',
+    bottom: '16px',
+    left: '16px',
+    padding: '4px 12px',
+    background: 'rgba(255,255,255,0.9)',
+    backdropFilter: 'blur(4px)',
+    borderRadius: '9999px',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    color: '#111827',
+    textTransform: 'capitalize',
+  },
+  outOfStockOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'rgba(0,0,0,0.5)',
+  },
+  outOfStockText: {
+    color: 'white',
+    fontWeight: 600,
+    fontSize: '1.125rem',
+  },
+  content: {
+    padding: '20px',
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  artisanRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '12px',
+  },
+  artisanInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  artisanAvatar: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    overflow: 'hidden',
+    background: '#f3f4f6',
+  },
+  artisanAvatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  artisanName: {
+    fontSize: '0.875rem',
+    color: '#4b5563',
+  },
+  location: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    color: '#9ca3af',
+  },
+  locationText: {
+    fontSize: '0.75rem',
+  },
+  productName: {
+    fontSize: '1rem',
+    fontWeight: 600,
+    color: '#111827',
+    marginBottom: '4px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  description: {
+    fontSize: '0.875rem',
+    color: '#6b7280',
+    marginBottom: '12px',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  },
+  stockStatus: {
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    marginBottom: '12px',
+  },
+  inStock: {
+    color: '#16a34a',
+  },
+  lowStock: {
+    color: '#f97316',
+  },
+  outOfStock: {
+    color: '#dc2626',
+  },
+  approvedBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: '12px',
+    padding: '12px',
+    marginBottom: '12px',
+  },
+  approvedIcon: {
+    color: '#16a34a',
+    fontSize: '1rem',
+  },
+  approvedText: {
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    color: '#166534',
+  },
+  priceRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '12px',
+  },
+  price: {
+    fontSize: '1.25rem',
+    fontWeight: 700,
+    color: '#111827',
+  },
+  actionsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  customizeButton: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    background: '#fef3c7',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#b45309',
+    transition: 'all 0.2s',
+    position: 'relative',
+  },
+  customizeButtonHover: {
+    background: '#b45309',
+    color: 'white',
+  },
+  cartButton: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    background: '#fef3c7',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#b45309',
+    transition: 'all 0.2s',
+  },
+  cartButtonDisabled: {
+    background: '#f3f4f6',
+    color: '#9ca3af',
+    cursor: 'not-allowed',
+  },
+  buyButton: {
+    width: '100%',
+    padding: '12px',
+    borderRadius: '12px',
+    border: 'none',
+    fontSize: '0.875rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  buyButtonDefault: {
+    background: '#b45309',
+    color: 'white',
+  },
+  buyButtonApproved: {
+    background: '#16a34a',
+    color: 'white',
+    boxShadow: '0 0 0 2px #86efac',
+  },
+  buyButtonDisabled: {
+    background: '#f3f4f6',
+    color: '#9ca3af',
+    cursor: 'not-allowed',
+  },
+};
+
 const PaletteIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth={1.8}>
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.56-.2-1.08-.53-1.47a.75.75 0 01.53-1.28H16c3.31 0 6-2.69 6-6C22 6.48 17.52 2 12 2z"/>
-    <circle cx="7"   cy="12"  r="1.3" fill="currentColor" stroke="none"/>
-    <circle cx="9.5" cy="7"   r="1.3" fill="currentColor" stroke="none"/>
-    <circle cx="14.5"cy="7"   r="1.3" fill="currentColor" stroke="none"/>
-    <circle cx="17"  cy="12"  r="1.3" fill="currentColor" stroke="none"/>
+    <circle cx="7" cy="12" r="1.5" fill="currentColor"/>
+    <circle cx="9.5" cy="7.5" r="1.5" fill="currentColor"/>
+    <circle cx="14.5" cy="7.5" r="1.5" fill="currentColor"/>
+    <circle cx="17" cy="12" r="1.5" fill="currentColor"/>
   </svg>
 );
 
-const ProductCard = ({ product, viewMode = 'grid', index = 0 }) => {
-  const [isHovered,       setIsHovered]       = useState(false);
-  const [addingToCart,    setAddingToCart]    = useState(false);
-  const [buyingNow,       setBuyingNow]       = useState(false);
-  const [showCustom,      setShowCustom]      = useState(false);
-  const [custBounce,      setCustBounce]      = useState(false);
+const ProductCard = ({ product, index = 0 }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [buyingNow, setBuyingNow] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+  const [custBounce, setCustBounce] = useState(false);
 
+  const navigate = useNavigate();
   const { addToCart, isInWishlist, addToWishlist, removeFromWishlist } = useCart();
   const { isAuthenticated, user } = useAuth();
   const { isCustomizationApproved } = useNotif();
-  const navigate = useNavigate();
 
-  const inWishlist    = isInWishlist(product._id);
-  // canOrder: true for actual buyers AND artisans/admins in buyer-mode
+  const inWishlist = isInWishlist(product._id);
   const effectiveRole = user?.activeRole || user?.role;
-  const canOrder      = isAuthenticated && effectiveRole === 'buyer';
-  const isOwnProduct  = isAuthenticated && (
+  const canOrder = isAuthenticated && effectiveRole === 'buyer';
+  const isOwnProduct = isAuthenticated && (
     String(user?.id || user?._id) === String(product.artisan?._id || product.artisan)
   );
-  const artisanLoc    = product.artisan?.location || '';
-  // True if this buyer has an accepted customization for this product
-  const custApproved  = isCustomizationApproved(product._id);
+  const custApproved = isCustomizationApproved(product._id);
+  const artisanLoc = product.artisan?.location || '';
 
-  /* ── handlers ──────────────────────────────────────────────────── */
   const handleAddToCart = async (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please login'); navigate('/login'); return; }
     if (isOwnProduct) { toast.error("You can't order your own product", { icon: '🚫' }); return; }
     if (!canOrder) { toast.error('Switch to buyer mode to place orders'); return; }
@@ -55,7 +318,8 @@ const ProductCard = ({ product, viewMode = 'grid', index = 0 }) => {
   };
 
   const handleBuyNow = async (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please login'); navigate('/login'); return; }
     if (isOwnProduct) { toast.error("You can't order your own product", { icon: '🚫' }); return; }
     if (!canOrder) { toast.error('Switch to buyer mode to place orders'); return; }
@@ -66,14 +330,16 @@ const ProductCard = ({ product, viewMode = 'grid', index = 0 }) => {
   };
 
   const handleWishlist = async (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please login'); navigate('/login'); return; }
     if (inWishlist) await removeFromWishlist(product._id);
-    else            await addToWishlist(product);
+    else await addToWishlist(product);
   };
 
   const openCustomize = (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please login to customise'); navigate('/login'); return; }
     if (isOwnProduct) { toast.error("You can't customise your own product", { icon: '🚫' }); return; }
     if (!canOrder) { toast.error('Switch to buyer mode to send customisation requests'); return; }
@@ -83,220 +349,194 @@ const ProductCard = ({ product, viewMode = 'grid', index = 0 }) => {
   };
 
   const stockBadge = () => {
-    if (product.stock === 0)  return <span className="text-[11px] font-semibold text-red-500">Out of stock</span>;
-    if (product.stock <= 10)  return <span className="text-[11px] font-semibold text-orange-500">Only {product.stock} left</span>;
-    return <span className="text-[11px] text-green-600 font-medium">In stock ({product.stock})</span>;
+    if (product.stock === 0) {
+      return <span style={{ ...styles.stockStatus, ...styles.outOfStock }}>Out of stock</span>;
+    }
+    if (product.stock <= 5) {
+      return <span style={{ ...styles.stockStatus, ...styles.lowStock }}>Only {product.stock} left</span>;
+    }
+    return <span style={{ ...styles.stockStatus, ...styles.inStock }}>In stock ({product.stock})</span>;
   };
 
-  /* ── List view ─────────────────────────────────────────────────── */
-  if (viewMode === 'list') {
-    return (
-      <>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: index * 0.05 }}
-          className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer"
-          onClick={() => navigate(`/products/${product._id}`)}
-        >
-          <div className="flex flex-col md:flex-row">
-            <div className="md:w-1/3 relative overflow-hidden">
-              <div className="relative h-64 md:h-full">
-                <img src={product.images?.[0]?.url || 'https://via.placeholder.com/600x800?text=Handcrafted'}
-                  alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-              </div>
-              <button onClick={handleWishlist}
-                className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                  inWishlist ? 'bg-red-500 text-white' : 'bg-white/90 backdrop-blur-sm text-gray-700 hover:bg-red-500 hover:text-white'
-                }`}>
-                <FiHeart className={`h-5 w-5 ${inWishlist ? 'fill-current' : ''}`} />
-              </button>
-            </div>
-            <div className="md:w-2/3 p-6 flex flex-col justify-between">
-              <div>
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="text-xl font-semibold text-gray-900 mb-1">{product.name}</h3>
-                    <p className="text-gray-600 text-sm">by {product.artisan?.name}</p>
-                    {artisanLoc && (
-                      <div className="flex items-center mt-1 text-gray-400">
-                        <FiMapPin className="h-3.5 w-3.5 mr-1" />
-                        <span className="text-xs">{artisanLoc}</span>
-                      </div>
-                    )}
-                  </div>
-                  <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-sm font-medium capitalize">{product.category}</span>
-                </div>
-                <p className="text-gray-600 mb-3 line-clamp-2 text-sm">{product.description}</p>
-              </div>
-              <div className="flex items-center justify-between pt-4 border-t">
-                <div>
-                  <span className="text-2xl font-bold text-gray-900">Rs. {product.price}</span>
-                  <div className="mt-1">{stockBadge()}</div>
-                </div>
-                <div className="flex items-center space-x-2" onClick={e => e.stopPropagation()}>
-                  {/* Customise button — always shown */}
-                  <motion.button onClick={openCustomize}
-                    animate={custBounce ? { scale: [1, 1.35, 1], rotate: [0, 15, -15, 0] } : {}}
-                    whileHover={{ scale: 1.08 }}
-                    title="Customise colour & size"
-                    className="p-3 rounded-full bg-amber-100 hover:bg-amber-700 text-amber-700 hover:text-white transition-colors shadow-sm">
-                    <PaletteIcon />
-                  </motion.button>
-                  <button onClick={handleAddToCart} disabled={addingToCart || product.stock === 0}
-                    className={`p-3 rounded-full transition-colors ${product.stock === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-primary/10 hover:bg-primary text-primary hover:text-white'}`}>
-                    {addingToCart ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" /> : <FiShoppingCart className="h-5 w-5" />}
-                  </button>
-                  <button onClick={handleBuyNow} disabled={buyingNow || product.stock === 0}
-                    className={`px-4 py-3 rounded-full text-sm font-medium transition-all border-2 ${
-                      product.stock === 0 ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-primary text-primary hover:bg-primary hover:text-white'
-                    }`}>
-                    {buyingNow ? '...' : 'Buy Now'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-        {showCustom && <ProductCustomizationModal product={product} onClose={() => setShowCustom(false)} />}
-      </>
-    );
-  }
-
-  /* ── Grid view ─────────────────────────────────────────────────── */
   return (
     <>
       <motion.div
-        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ delay: index * 0.05 }}
-        onHoverStart={() => setIsHovered(true)}
-        onHoverEnd={() => setIsHovered(false)}
-        className="group bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={styles.card}
         onClick={() => navigate(`/products/${product._id}`)}
       >
-        {/* ── Image area ─────────────────────────────────────────── */}
-        <div className="relative overflow-hidden">
-          <div className="relative h-64">
-            <img
-              src={product.images?.[0]?.url || 'https://via.placeholder.com/600x800?text=Handcrafted'}
-              alt={product.name}
-              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
+        {/* Image Container */}
+        <div style={styles.imageContainer}>
+          <img
+            src={product.images?.[0]?.url || 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=400'}
+            alt={product.name}
+            style={{
+              ...styles.image,
+              transform: isHovered ? 'scale(1.1)' : 'scale(1)',
+            }}
+            onError={(e) => {
+              e.target.src = 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=400';
+            }}
+          />
+          <div style={{ ...styles.overlay, opacity: isHovered ? 1 : 0 }} />
 
-          {/* Hover quick-actions (top-right) — wishlist + view only */}
+          {/* Quick Actions */}
           <motion.div
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: isHovered ? 1 : 0, x: isHovered ? 0 : 16 }}
             transition={{ duration: 0.25 }}
-            className="absolute top-4 right-4 flex flex-col gap-2"
-            onClick={e => e.stopPropagation()}
+            style={styles.actions}
+            onClick={(e) => e.stopPropagation()}
           >
-            <button onClick={handleWishlist}
-              className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition-all ${
-                inWishlist ? 'bg-red-500 text-white' : 'bg-white text-gray-700 hover:bg-red-500 hover:text-white'
-              }`}>
-              <FiHeart className={`h-4 w-4 ${inWishlist ? 'fill-current' : ''}`} />
+            <button
+              onClick={handleWishlist}
+              style={{
+                ...styles.wishlistButton,
+                ...(inWishlist ? styles.wishlistActive : {}),
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill={inWishlist ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
             </button>
-            <Link to={`/products/${product._id}`} onClick={e => e.stopPropagation()}
-              className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-gray-700 hover:bg-primary hover:text-white shadow-lg transition-colors">
-              <FiEye className="h-4 w-4" />
-            </Link>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/products/${product._id}`);
+              }}
+              style={styles.actionButton}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M22 12c-2.667 4.667-6 7-10 7s-7.333-2.333-10-7c2.667-4.667 6-7 10-7s7.333 2.333 10 7z" />
+              </svg>
+            </button>
           </motion.div>
 
-          {/* Category badge */}
+          {/* Category Badge */}
           {product.category && (
-            <span className="absolute bottom-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-xs font-semibold text-gray-900 shadow-lg capitalize">
+            <span style={styles.categoryBadge}>
               {product.category}
             </span>
           )}
 
-          {/* Out of stock overlay */}
+          {/* Out of Stock Overlay */}
           {product.stock === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-              <span className="text-white font-semibold text-lg">Out of Stock</span>
+            <div style={styles.outOfStockOverlay}>
+              <span style={styles.outOfStockText}>Out of Stock</span>
             </div>
           )}
         </div>
 
-        {/* ── Card body ──────────────────────────────────────────── */}
-        <div className="p-5">
-          {/* Artisan + location row */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
+        {/* Content */}
+        <div style={styles.content}>
+          {/* Artisan Row */}
+          <div style={styles.artisanRow}>
+            <div style={styles.artisanInfo}>
+              <div style={styles.artisanAvatar}>
                 <img
-                  src={product.artisan?.avatar?.url || `https://ui-avatars.com/api/?name=${product.artisan?.name || 'A'}&background=8B4513&color=fff&size=28`}
+                  src={product.artisan?.avatar?.url || `https://ui-avatars.com/api/?name=${product.artisan?.name || 'A'}&background=b45309&color=fff&size=28`}
                   alt={product.artisan?.name}
-                  className="w-full h-full object-cover"
+                  style={styles.artisanAvatarImg}
+                  onError={(e) => {
+                    e.target.src = `https://ui-avatars.com/api/?name=${product.artisan?.name || 'A'}&background=b45309&color=fff&size=28`;
+                  }}
                 />
               </div>
-              <span className="text-sm text-gray-600 truncate">{product.artisan?.name}</span>
+              <span style={styles.artisanName}>{product.artisan?.name}</span>
             </div>
             {artisanLoc && (
-              <div className="flex items-center text-gray-400 flex-shrink-0">
-                <FiMapPin className="h-3.5 w-3.5 mr-0.5" />
-                <span className="text-xs">{artisanLoc}</span>
+              <div style={styles.location}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <span style={styles.locationText}>{artisanLoc}</span>
               </div>
             )}
           </div>
 
-          <h3 className="text-base font-semibold text-gray-900 mb-1 line-clamp-1">{product.name}</h3>
-          <p className="text-gray-500 text-sm mb-3 line-clamp-2">{product.description}</p>
-          <div className="mb-3">{stockBadge()}</div>
+          <h3 style={styles.productName}>{product.name}</h3>
+          <p style={styles.description}>{product.description}</p>
+          {stockBadge()}
 
-          {/* Customization approved banner */}
+          {/* Customization Approved Banner */}
           {custApproved && (
             <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-3"
+              style={styles.approvedBanner}
             >
-              <FiCheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-              <span className="text-xs font-semibold text-green-700">Customisation approved — you can now purchase!</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={styles.approvedIcon}>
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <span style={styles.approvedText}>Customisation approved — you can now purchase!</span>
             </motion.div>
           )}
 
-          {/* Price + customise + cart row */}
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xl font-bold text-gray-900">Rs. {product.price?.toLocaleString()}</span>
-
-            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-              {/* ── Customise palette icon — ALWAYS visible ─────── */}
+          {/* Price and Actions */}
+          <div style={styles.priceRow}>
+            <span style={styles.price}>Rs. {product.price?.toLocaleString()}</span>
+            <div style={styles.actionsRow} onClick={(e) => e.stopPropagation()}>
+              {/* Customize Button */}
               <motion.button
                 onClick={openCustomize}
-                animate={custBounce ? { scale: [1, 1.4, 1], rotate: [0, 20, -20, 0] } : {}}
-                whileHover={{ scale: 1.12 }}
+                animate={custBounce ? { scale: [1, 1.2, 1], rotate: [0, 15, -15, 0] } : {}}
+                whileHover={{ scale: 1.1 }}
+                style={{
+                  ...styles.customizeButton,
+                  ...(isHovered ? styles.customizeButtonHover : {}),
+                }}
                 title="Customise colour & size"
-                className="relative w-9 h-9 rounded-full bg-amber-100 hover:bg-amber-700 text-amber-700 hover:text-white transition-all shadow-sm flex items-center justify-center"
               >
                 <PaletteIcon />
-                <span className="absolute inset-0 rounded-full ring-2 ring-amber-400 ring-offset-1 opacity-0 group-hover:opacity-100 transition-opacity" />
               </motion.button>
 
-              {/* Cart */}
-              <button onClick={handleAddToCart} disabled={addingToCart || product.stock === 0}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-                  product.stock === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-primary/10 hover:bg-primary text-primary hover:text-white'
-                }`}>
-                {addingToCart
-                  ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
-                  : <FiShoppingCart className="h-4 w-4" />
-                }
+              {/* Cart Button */}
+              <button
+                onClick={handleAddToCart}
+                disabled={addingToCart || product.stock === 0}
+                style={{
+                  ...styles.cartButton,
+                  ...(product.stock === 0 ? styles.cartButtonDisabled : {}),
+                }}
+              >
+                {addingToCart ? (
+                  <div style={{
+                    width: '16px',
+                    height: '16px',
+                    border: '2px solid currentColor',
+                    borderTopColor: 'transparent',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite',
+                  }} />
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="9" cy="21" r="1" />
+                    <circle cx="20" cy="21" r="1" />
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                  </svg>
+                )}
               </button>
             </div>
           </div>
 
-          {/* Buy Now */}
-          <div onClick={e => e.stopPropagation()}>
-            <button onClick={handleBuyNow} disabled={buyingNow || product.stock === 0}
-              className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                product.stock === 0
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : custApproved
-                    ? 'bg-green-600 hover:bg-green-700 text-white hover:shadow-lg ring-2 ring-green-300'
-                    : 'bg-primary hover:bg-primary-dark text-white hover:shadow-lg'
-              }`}>
+          {/* Buy Now Button */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={handleBuyNow}
+              disabled={buyingNow || product.stock === 0}
+              style={{
+                ...styles.buyButton,
+                ...(product.stock === 0 ? styles.buyButtonDisabled : 
+                    custApproved ? styles.buyButtonApproved : styles.buyButtonDefault),
+              }}
+            >
               {buyingNow ? 'Processing...' : custApproved ? '🛒 Buy Customised' : 'Buy Now'}
             </button>
           </div>
@@ -306,6 +546,15 @@ const ProductCard = ({ product, viewMode = 'grid', index = 0 }) => {
       {showCustom && (
         <ProductCustomizationModal product={product} onClose={() => setShowCustom(false)} />
       )}
+
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
     </>
   );
 };

@@ -8,7 +8,6 @@ import {
   FiRefreshCw, FiX,
   FiAward,
   FiGrid, FiList,
-  FiLogIn,
   FiStar, FiMessageSquare,
   FiArrowLeft, FiAlertCircle
 } from 'react-icons/fi';
@@ -28,7 +27,7 @@ const RevenueIcon = ({ className }) => (
 );
 
 const AdminDashboard = () => {
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout } = useAuth();
   const { addNotification } = useNotif();
   const { socket } = useSocket();
   const navigate = useNavigate();
@@ -81,19 +80,48 @@ const AdminDashboard = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [statsRes, usersRes, productsRes, ordersRes] = await Promise.all([
+      const [statsRes, usersRes, productsRes, ordersRes] = await Promise.allSettled([
         api.get('/admin/stats'),
         api.get('/admin/users'),
         api.get('/admin/products'),
         api.get('/admin/orders'),
       ]);
-      setStats(statsRes.data?.stats || statsRes.data || {});
-      setUsers(usersRes.data?.users || usersRes.data?.data || (Array.isArray(usersRes.data) ? usersRes.data : []));
-      setProducts(productsRes.data?.products || productsRes.data?.data || (Array.isArray(productsRes.data) ? productsRes.data : []));
-      setOrders(ordersRes.data?.orders || ordersRes.data?.data || (Array.isArray(ordersRes.data) ? ordersRes.data : []));
+
+      if (statsRes.status === 'fulfilled') {
+        const payload = statsRes.value?.data;
+        setStats(payload?.stats || payload || {});
+      } else {
+        console.error('Failed to load /admin/stats:', statsRes.reason);
+        toast.error('Failed to load admin stats.');
+      }
+
+      if (usersRes.status === 'fulfilled') {
+        const payload = usersRes.value?.data;
+        setUsers(payload?.users || payload?.data || (Array.isArray(payload) ? payload : []));
+      } else {
+        console.error('Failed to load /admin/users:', usersRes.reason);
+        toast.error('Failed to load users.');
+      }
+
+      if (productsRes.status === 'fulfilled') {
+        const payload = productsRes.value?.data;
+        setProducts(payload?.products || payload?.data || (Array.isArray(payload) ? payload : []));
+      } else {
+        console.error('Failed to load /admin/products:', productsRes.reason);
+        toast.error('Failed to load products.');
+      }
+
+      if (ordersRes.status === 'fulfilled') {
+        const payload = ordersRes.value?.data;
+        setOrders(payload?.orders || payload?.data || (Array.isArray(payload) ? payload : []));
+      } else {
+        console.error('Failed to load /admin/orders:', ordersRes.reason);
+        toast.error('Failed to load orders.');
+      }
     } catch (e) {
-      console.error('Failed to load admin data:', e);
-      toast.error('Failed to load data. Please refresh.');
+      // This should rarely happen because Promise.allSettled does not throw.
+      console.error('Unexpected admin fetch error:', e);
+      toast.error('Failed to load admin data. Please refresh.');
     } finally { setLoading(false); }
   };
 
@@ -149,22 +177,6 @@ const AdminDashboard = () => {
     catch (e) { toast.error('Failed'); }
   };
 
-  const handleLoginAs = async (targetUser) => {
-    if (!window.confirm(`Login as ${targetUser.name} (${targetUser.role})?\nThis will replace your current session.`)) return;
-    try {
-      const res = await api.post(`/admin/login-as/${targetUser._id}`);
-      const { token, user: impUser } = res.data;
-      localStorage.setItem('adminToken', localStorage.getItem('token'));
-      localStorage.setItem('adminUser', localStorage.getItem('user'));
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(impUser));
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      updateUser(impUser);
-      toast.success(`Now browsing as ${impUser.name}`);
-      if (impUser.role === 'buyer') navigate('/buyer/dashboard');
-      else if (impUser.role === 'artisan') navigate('/artisan/dashboard');
-    } catch (e) { toast.error('Failed to switch account'); }
-  };
 
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-800', confirmed: 'bg-blue-100 text-blue-800',
@@ -189,30 +201,6 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const Sidebar = ({ children, backLabel, onBack }) => (
-    <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
-      <div className="p-4 flex items-center justify-between border-b border-amber-800">
-        {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-amber-800 rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
-      </div>
-      {sidebarOpen && onBack && (
-        <div className="p-4 border-b border-amber-800">
-          <button onClick={onBack} className="flex items-center space-x-2 text-amber-200 hover:text-white text-sm mb-2">
-            <FiArrowLeft className="h-4 w-4" /><span>{backLabel}</span>
-          </button>
-          {children}
-        </div>
-      )}
-      {!onBack && sidebarOpen && (
-        <div className="p-4 border-b border-amber-800">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-amber-700 flex items-center justify-center font-bold">{user?.name?.[0] || 'A'}</div>
-            <div><p className="font-medium text-sm">{user?.name}</p><p className="text-xs text-amber-300">Administrator</p></div>
-          </div>
-        </div>
-      )}
-    </aside>
-  );
 
   // ─── Artisan Detail View ──────────────────────────────────────────────────
   if (selectedArtisan) {
@@ -592,169 +580,172 @@ const AdminDashboard = () => {
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-10 shadow-sm">
           <h2 className="text-gray-700 font-semibold capitalize">{activeTab === 'dashboard' ? 'Admin Dashboard' : activeTab}</h2>
           <div className="flex items-center space-x-3">
+            <button onClick={() => navigate('/')} className="flex items-center space-x-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-colors font-medium text-sm">
+              <FiHome className="h-4 w-4" /><span>Home</span>
+            </button>
             <NotificationBell />
           </div>
         </header>
         <div className="p-6 pt-8 flex-1">
 
-        {/* Overview */}
-        {activeTab === 'dashboard' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex justify-between items-center mb-8">
-              <div><h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1><p className="text-gray-500">Platform overview and analytics</p></div>
-              <button onClick={fetchAll} className="flex items-center space-x-2 px-4 py-2 bg-white rounded-xl shadow-sm hover:shadow-md text-gray-600">
-                <FiRefreshCw className="h-4 w-4" /><span>Refresh</span>
-              </button>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              {[
-                { label: 'Total Users', value: stats.users?.total || 0, sub: `${stats.users?.artisans || 0} artisans, ${stats.users?.buyers || 0} buyers`, icon: FiUsers, color: 'from-blue-500 to-blue-600' },
-                { label: 'Products', value: stats.products?.total || 0, sub: `${stats.products?.active || 0} active`, icon: FiPackage, color: 'from-purple-500 to-purple-600' },
-                { label: 'Orders', value: stats.orders?.total || 0, sub: `${stats.orders?.pending || 0} pending`, icon: FiShoppingBag, color: 'from-orange-500 to-orange-600' },
-                { label: 'Total Revenue', value: `LKR ${((stats.orders?.revenue || 0) / 1000).toFixed(1)}K`, sub: 'Delivered orders only', icon: RevenueIcon, color: 'from-green-500 to-emerald-600' },
-              ].map((s, i) => (
-                <motion.div key={i} whileHover={{ y: -4 }} className="bg-white rounded-2xl p-6 shadow-sm">
-                  <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${s.color} flex items-center justify-center mb-4`}><s.icon className="h-6 w-6 text-white" /></div>
-                  <div className="text-3xl font-bold text-gray-900">{s.value}</div>
-                  <div className="text-sm font-medium text-gray-700 mt-1">{s.label}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>
-                </motion.div>
-              ))}
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm p-6">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Pending Artisan Verification</h2>
-              {users.filter(u => u.role === 'artisan' && !u.isVerified).length === 0 ? (
-                <div className="text-center py-8 text-gray-400"><FiCheckCircle className="h-10 w-10 mx-auto mb-2 text-green-400" /><p className="text-sm">All artisans verified!</p></div>
-              ) : (
-                <div className="space-y-3">
-                  {users.filter(u => u.role === 'artisan' && !u.isVerified).map(u => (
-                    <div key={u._id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
-                      <div><p className="font-medium text-sm text-gray-900">{u.name}</p><p className="text-xs text-gray-500">{u.email} · {u.artisanProfile?.businessName}</p></div>
-                      <button onClick={() => handleVerifyArtisan(u._id)} disabled={actionLoading === u._id} className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50">Verify</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Buyers — each is a clickable button */}
-        {activeTab === 'buyers' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">Buyers Management</h1>
-              <div className="flex space-x-2">
-                <button onClick={() => setBuyerViewMode('grid')} className={`p-2 rounded-lg ${buyerViewMode === 'grid' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiGrid /></button>
-                <button onClick={() => setBuyerViewMode('list')} className={`p-2 rounded-lg ${buyerViewMode === 'list' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiList /></button>
+          {/* Overview */}
+          {activeTab === 'dashboard' && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <div className="flex justify-between items-center mb-8">
+                <div><h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1><p className="text-gray-500">Platform overview and analytics</p></div>
+                <button onClick={fetchAll} className="flex items-center space-x-2 px-4 py-2 bg-white rounded-xl shadow-sm hover:shadow-md text-gray-600">
+                  <FiRefreshCw className="h-4 w-4" /><span>Refresh</span>
+                </button>
               </div>
-            </div>
-            <div className="mb-4 relative max-w-md">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search buyers..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm bg-white" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {users.filter(u => u.role === 'buyer' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
-                <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => setSelectedBuyer(u)}
-                  className="bg-white rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-amber-200">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-700">{u.name?.[0]}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 truncate">{u.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{u.email}</p>
-                    </div>
-                    <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
-                    <span className="text-xs text-gray-400">{orders.filter(o => (o.buyer?._id || o.buyer?.id) === u._id).length} orders</span>
-                  </div>
-                </motion.button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Artisans — each is a clickable button */}
-        {activeTab === 'artisans' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold text-gray-900">Artisans Management</h1>
-              <div className="flex space-x-2">
-                <button onClick={() => setArtisanViewMode('grid')} className={`p-2 rounded-lg ${artisanViewMode === 'grid' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiGrid /></button>
-                <button onClick={() => setArtisanViewMode('list')} className={`p-2 rounded-lg ${artisanViewMode === 'list' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiList /></button>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                {[
+                  { label: 'Total Users', value: stats.users?.total || 0, sub: `${stats.users?.artisans || 0} artisans, ${stats.users?.buyers || 0} buyers`, icon: FiUsers, color: 'from-blue-500 to-blue-600' },
+                  { label: 'Products', value: stats.products?.total || 0, sub: `${stats.products?.active || 0} active`, icon: FiPackage, color: 'from-purple-500 to-purple-600' },
+                  { label: 'Orders', value: stats.orders?.total || 0, sub: `${stats.orders?.pending || 0} pending`, icon: FiShoppingBag, color: 'from-orange-500 to-orange-600' },
+                  { label: 'Total Revenue', value: `LKR ${((stats.orders?.revenue || 0) / 1000).toFixed(1)}K`, sub: 'Delivered orders only', icon: RevenueIcon, color: 'from-green-500 to-emerald-600' },
+                ].map((s, i) => (
+                  <motion.div key={i} whileHover={{ y: -4 }} className="bg-white rounded-2xl p-6 shadow-sm">
+                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${s.color} flex items-center justify-center mb-4`}><s.icon className="h-6 w-6 text-white" /></div>
+                    <div className="text-3xl font-bold text-gray-900">{s.value}</div>
+                    <div className="text-sm font-medium text-gray-700 mt-1">{s.label}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>
+                  </motion.div>
+                ))}
               </div>
-            </div>
-            <div className="mb-4 relative max-w-md">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search artisans..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm bg-white" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {users.filter(u => u.role === 'artisan' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
-                <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => openArtisanDetail(u)}
-                  className="bg-white rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-amber-100">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-600">{u.name?.[0]}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 truncate">{u.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{u.artisanProfile?.businessName || u.email}</p>
-                    </div>
-                    <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                  </div>
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isVerified ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{u.isVerified ? '✓ Verified' : 'Pending'}</span>
-                  </div>
-                  {u.artisanProfile?.stats && (
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <div className="bg-gray-50 p-2 rounded-lg text-center">
-                        <p className="text-[10px] text-gray-500 uppercase">Revenue</p>
-                        <p className="text-xs font-bold text-gray-900">LKR {(u.artisanProfile.stats.totalRevenue || 0).toLocaleString()}</p>
+              <div className="bg-white rounded-2xl shadow-sm p-6">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">Pending Artisan Verification</h2>
+                {users.filter(u => u.role === 'artisan' && !u.isVerified).length === 0 ? (
+                  <div className="text-center py-8 text-gray-400"><FiCheckCircle className="h-10 w-10 mx-auto mb-2 text-green-400" /><p className="text-sm">All artisans verified!</p></div>
+                ) : (
+                  <div className="space-y-3">
+                    {users.filter(u => u.role === 'artisan' && !u.isVerified).map(u => (
+                      <div key={u._id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-xl">
+                        <div><p className="font-medium text-sm text-gray-900">{u.name}</p><p className="text-xs text-gray-500">{u.email} · {u.artisanProfile?.businessName}</p></div>
+                        <button onClick={() => handleVerifyArtisan(u._id)} disabled={actionLoading === u._id} className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50">Verify</button>
                       </div>
-                      <div className="bg-gray-50 p-2 rounded-lg text-center">
-                        <p className="text-[10px] text-gray-500 uppercase">Orders</p>
-                        <p className="text-xs font-bold text-gray-900">{u.artisanProfile.stats.totalOrders || 0}</p>
-                      </div>
-                    </div>
-                  )}
-                </motion.button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Products */}
-        {activeTab === 'products' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Products Management</h1>
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <div className="p-4 border-b">
-                <div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search products..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm" /></div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50"><tr>{['Product', 'Artisan', 'Category', 'Price', 'Stock', 'Status', 'Actions'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {products.filter(p => !searchTerm || p.name?.toLowerCase().includes(searchTerm.toLowerCase())).map(product => (
-                      <tr key={product._id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3"><div className="flex items-center space-x-3"><img src={product.images?.[0]?.url || 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=50'} className="w-10 h-10 rounded-lg object-cover" alt="" /><p className="font-medium text-sm text-gray-900 max-w-[150px] truncate">{product.name}</p></div></td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{product.artisan?.name || 'N/A'}</td>
-                        <td className="px-4 py-3"><span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs capitalize">{product.category}</span></td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">LKR {product.price?.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{product.stock}</td>
-                        <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${product.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{product.isActive ? 'Active' : 'Inactive'}</span></td>
-                        <td className="px-4 py-3"><div className="flex items-center space-x-2">
-                          <button onClick={() => handleToggleProduct(product._id, product.isActive)} className={`px-3 py-1 text-xs rounded-lg font-medium ${product.isActive ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>{product.isActive ? 'Deactivate' : 'Activate'}</button>
-                          <button onClick={() => handleDeleteProduct(product._id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><FiTrash2 className="h-3.5 w-3.5" /></button>
-                        </div></td>
-                      </tr>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          )}
+
+          {/* Buyers — each is a clickable button */}
+          {activeTab === 'buyers' && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">Buyers Management</h1>
+                <div className="flex space-x-2">
+                  <button onClick={() => setBuyerViewMode('grid')} className={`p-2 rounded-lg ${buyerViewMode === 'grid' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiGrid /></button>
+                  <button onClick={() => setBuyerViewMode('list')} className={`p-2 rounded-lg ${buyerViewMode === 'list' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiList /></button>
+                </div>
+              </div>
+              <div className="mb-4 relative max-w-md">
+                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search buyers..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm bg-white" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {users.filter(u => u.role === 'buyer' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
+                  <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => setSelectedBuyer(u)}
+                    className="bg-white rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-amber-200">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-700">{u.name?.[0]}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{u.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                      </div>
+                      <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
+                      <span className="text-xs text-gray-400">{orders.filter(o => (o.buyer?._id || o.buyer?.id) === u._id).length} orders</span>
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Artisans — each is a clickable button */}
+          {activeTab === 'artisans' && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">Artisans Management</h1>
+                <div className="flex space-x-2">
+                  <button onClick={() => setArtisanViewMode('grid')} className={`p-2 rounded-lg ${artisanViewMode === 'grid' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiGrid /></button>
+                  <button onClick={() => setArtisanViewMode('list')} className={`p-2 rounded-lg ${artisanViewMode === 'list' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiList /></button>
+                </div>
+              </div>
+              <div className="mb-4 relative max-w-md">
+                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search artisans..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm bg-white" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {users.filter(u => u.role === 'artisan' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
+                  <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => openArtisanDetail(u)}
+                    className="bg-white rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-amber-100">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-600">{u.name?.[0]}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{u.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{u.artisanProfile?.businessName || u.email}</p>
+                      </div>
+                      <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isVerified ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{u.isVerified ? '✓ Verified' : 'Pending'}</span>
+                    </div>
+                    {u.artisanProfile?.stats && (
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div className="bg-gray-50 p-2 rounded-lg text-center">
+                          <p className="text-[10px] text-gray-500 uppercase">Revenue</p>
+                          <p className="text-xs font-bold text-gray-900">LKR {(u.artisanProfile.stats.totalRevenue || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="bg-gray-50 p-2 rounded-lg text-center">
+                          <p className="text-[10px] text-gray-500 uppercase">Orders</p>
+                          <p className="text-xs font-bold text-gray-900">{u.artisanProfile.stats.totalOrders || 0}</p>
+                        </div>
+                      </div>
+                    )}
+                  </motion.button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Products */}
+          {activeTab === 'products' && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <h1 className="text-2xl font-bold text-gray-900 mb-6">Products Management</h1>
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b">
+                  <div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search products..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm" /></div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50"><tr>{['Product', 'Artisan', 'Category', 'Price', 'Stock', 'Status', 'Actions'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {products.filter(p => !searchTerm || p.name?.toLowerCase().includes(searchTerm.toLowerCase())).map(product => (
+                        <tr key={product._id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3"><div className="flex items-center space-x-3"><img src={product.images?.[0]?.url || 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=50'} className="w-10 h-10 rounded-lg object-cover" alt="" /><p className="font-medium text-sm text-gray-900 max-w-[150px] truncate">{product.name}</p></div></td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{product.artisan?.name || 'N/A'}</td>
+                          <td className="px-4 py-3"><span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs capitalize">{product.category}</span></td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">LKR {product.price?.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{product.stock}</td>
+                          <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${product.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{product.isActive ? 'Active' : 'Inactive'}</span></td>
+                          <td className="px-4 py-3"><div className="flex items-center space-x-2">
+                            <button onClick={() => handleToggleProduct(product._id, product.isActive)} className={`px-3 py-1 text-xs rounded-lg font-medium ${product.isActive ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>{product.isActive ? 'Deactivate' : 'Activate'}</button>
+                            <button onClick={() => handleDeleteProduct(product._id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><FiTrash2 className="h-3.5 w-3.5" /></button>
+                          </div></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </div>
       </main>
 

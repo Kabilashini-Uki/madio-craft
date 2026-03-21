@@ -41,9 +41,12 @@ export const AuthProvider = ({ children }) => {
               delete api.defaults.headers.common['Authorization'];
             }
           } catch (error) {
-            // Token verification failed, but we'll still use stored user
-            setUser(parsedUser);
-            setToken(storedToken);
+            console.error('Token verification failed:', error);
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            delete api.defaults.headers.common['Authorization'];
+            setUser(null);
+            setToken(null);
           }
         }
       } catch (e) {
@@ -107,22 +110,8 @@ export const AuthProvider = ({ children }) => {
       const res = await api.post('/auth/register', userData);
       console.log('Register response:', res.data);
 
-      const { token, user } = res.data;
-
-      if (!token || !user) {
-        throw new Error('Invalid response from server');
-      }
-
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-      setUser(user);
-      setToken(token);
-
-      toast.success('Welcome to the Madio Craft');
-      return { success: true, user, token };
+      toast.success('Registration successful! Welcome to Madio Craft.');
+      return { success: true };
 
     } catch (err) {
       console.error('Registration error:', err);

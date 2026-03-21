@@ -1,3 +1,5 @@
+import api from './api';
+
 const loadRazorpay = () => {
   return new Promise((resolve) => {
     const script = document.createElement('script');
@@ -29,26 +31,19 @@ export const displayRazorpay = async (orderData, onSuccess, onError) => {
     order_id: orderData.id,
     handler: async function (response) {
       try {
-        const verifyResponse = await fetch(`${process.env.REACT_APP_API_URL}/orders/verify-payment`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            razorpay_order_id: response.razorpay_order_id,
-            razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_signature: response.razorpay_signature,
-          }),
+        const res = await api.post('/orders/verify-payment', {
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
         });
 
-        const verifyData = await verifyResponse.json();
-
-        if (verifyData.success) {
-          onSuccess(verifyData.order);
+        if (res.data.success) {
+          onSuccess(res.data.order);
         } else {
-          onError('Payment verification failed');
+          onError(res.data.message || 'Payment verification failed');
         }
       } catch (err) {
+        console.error('Razorpay verification error:', err);
         onError('Payment verification failed');
       }
     },

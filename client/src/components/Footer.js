@@ -98,28 +98,7 @@ const Footer = () => {
           </div>
 
     
-          <div className="lg:col-span-2">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              <h3 className="text-lg font-semibold mb-6">Support</h3>
-              <ul className="space-y-4">
-                {['Help Center', 'Contact Us', 'Privacy Policy', 'Terms of Service'].map((item, index) => (
-                  <li key={index}>
-                    <Link 
-                      to={`/${item.toLowerCase().replace(' ', '-')}`}
-                      className="text-gray-400 hover:text-white flex items-center space-x-2 group"
-                    >
-                      <FiArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                      <span>{item}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-          </div>
+         
 
    
           <div className="lg:col-span-4">
@@ -171,31 +150,7 @@ const Footer = () => {
         </div>
 
      
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.6 }}
-          className="border-t border-white/10 pt-12 pb-8"
-        >
-          <div className="max-w-3xl mx-auto text-center">
-            <h3 className="text-2xl font-serif font-semibold mb-3">
-              Join the Artisan Community
-            </h3>
-            <p className="text-gray-400 mb-6">
-              Subscribe to receive updates about new artisans, exclusive collections, and craft stories.
-            </p>
-            <form className="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto">
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className="flex-1 px-6 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <button className="px-8 py-3 bg-gradient-to-r from-primary to-primary-dark text-white rounded-full font-medium hover:shadow-lg hover:-translate-y-0.5 transition-all">
-                Subscribe
-              </button>
-            </form>
-          </div>
-        </motion.div>
+       
 
     
         <div className="border-t border-white/10 py-8 mt-4">
@@ -205,17 +160,7 @@ const Footer = () => {
               <span className="mx-2">•</span>
               Crafted with ❤️ for artisans
             </p>
-            <div className="flex space-x-6 text-sm text-gray-400">
-              <Link to="/privacy" className="hover:text-white transition-colors">
-                Privacy
-              </Link>
-              <Link to="/terms" className="hover:text-white transition-colors">
-                Terms
-              </Link>
-              <Link to="/cookies" className="hover:text-white transition-colors">
-                Cookies
-              </Link>
-            </div>
+            
           </div>
         </div>
       </div>

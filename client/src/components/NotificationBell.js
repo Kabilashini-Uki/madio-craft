@@ -9,22 +9,22 @@ import { useNotif } from '../context/NotifContext';
 import { useNavigate } from 'react-router-dom';
 
 const ICONS = {
-  'new-order':              { Icon: FiShoppingBag,    color: 'text-green-600',  bg: 'bg-green-50' },
-  'order-status':           { Icon: FiPackage,         color: 'text-blue-600',   bg: 'bg-blue-50' },
-  'order-cancelled':        { Icon: FiAlertTriangle,   color: 'text-red-600',    bg: 'bg-red-50' },
-  'chat':                   { Icon: FiMessageCircle,   color: 'text-purple-600', bg: 'bg-purple-50' },
-  'customization-request':  { Icon: FiTool,            color: 'text-violet-600', bg: 'bg-violet-50' },
-  'customization-response': { Icon: FiTool,            color: 'text-indigo-600', bg: 'bg-indigo-50' },
-  'new-registration':       { Icon: FiUserPlus,        color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'new-order': { Icon: FiShoppingBag, color: 'text-green-600', bg: 'bg-green-50' },
+  'order-status': { Icon: FiPackage, color: 'text-blue-600', bg: 'bg-blue-50' },
+  'order-cancelled': { Icon: FiAlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
+  'chat': { Icon: FiMessageCircle, color: 'text-purple-600', bg: 'bg-purple-50' },
+  'customization-request': { Icon: FiTool, color: 'text-violet-600', bg: 'bg-violet-50' },
+  'customization-response': { Icon: FiTool, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'new-registration': { Icon: FiUserPlus, color: 'text-indigo-600', bg: 'bg-indigo-50' },
 };
 
 /* ── Status badge ─────────────────────────────────────────────── */
 const StatusBadge = ({ status }) => {
   if (!status) return null;
   const map = {
-    pending:  { label: 'Pending',  cls: 'bg-yellow-100 text-yellow-700' },
-    accepted: { label: 'Accepted', cls: 'bg-green-100  text-green-700'  },
-    rejected: { label: 'Declined', cls: 'bg-red-100    text-red-700'    },
+    pending: { label: 'Pending', cls: 'bg-yellow-100 text-yellow-700' },
+    accepted: { label: 'Accepted', cls: 'bg-green-100  text-green-700' },
+    rejected: { label: 'Declined', cls: 'bg-red-100    text-red-700' },
   };
   const cfg = map[status];
   if (!cfg) return null;
@@ -59,15 +59,17 @@ const NotificationBell = () => {
     setOpen(false);
     if (notif.type === 'chat' && notif.roomId) navigate(`/chat/${notif.roomId}`);
     else if (notif.type === 'new-order' || notif.type === 'order-cancelled') navigate('/artisan-dashboard');
-    else if (notif.type === 'customization-request')  navigate('/artisan-dashboard?tab=customizations');
-    else if (notif.type === 'customization-response' && notif.productId) { const url = notif.actionUrl || `/products/${notif.productId}?customize=true&requestId=${notif.requestId}`; navigate(url); }
+    else if (notif.type === 'customization-request' || notif.type === 'customization-response') {
+      const id = notif.requestId || notif.id;
+      navigate(`/customization/${id}`);
+    }
     else navigate('/dashboard');
   };
 
   const timeAgo = (date) => {
     const diff = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-    if (diff < 60)    return `${diff}s ago`;
-    if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     return new Date(date).toLocaleDateString();
   };
@@ -123,7 +125,7 @@ const NotificationBell = () => {
         {open && (
           <motion.div
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0,  scale: 1 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
             className="absolute right-0 mt-2 w-84 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden"

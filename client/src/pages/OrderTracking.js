@@ -43,7 +43,6 @@ const OrderTracking = () => {
       case 'pending': return <FiClock className="h-6 w-6" />;
       case 'confirmed': return <FiCheckCircle className="h-6 w-6" />;
       case 'processing': return <FiPackage className="h-6 w-6" />;
-      case 'shipped': return <FiTruck className="h-6 w-6" />;
       case 'delivered': return <FiCheckCircle className="h-6 w-6" />;
       default: return <FiClock className="h-6 w-6" />;
     }
@@ -109,7 +108,6 @@ const OrderTracking = () => {
               </div>
               <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
                 order.orderStatus === 'delivered' ? 'bg-green-100 text-green-700' :
-                order.orderStatus === 'shipped' ? 'bg-blue-100 text-blue-700' :
                 order.orderStatus === 'cancelled' ? 'bg-red-100 text-red-700' :
                 'bg-yellow-100 text-yellow-700'
               }`}>

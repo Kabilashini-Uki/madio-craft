@@ -1,17 +1,17 @@
 // src/services/api.js
 import axios from 'axios';
 
-// Prefer explicit REACT_APP_API_URL. If not provided, fall back to localhost:5000/api (backend default).
-// If your backend runs on a different port, set REACT_APP_API_URL in the client .env (e.g. REACT_APP_API_URL=http://localhost:5000/api)
+// Use environment variable with fallback
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 console.log('🌐 API Base URL:', API_URL);
 
 const api = axios.create({
   baseURL: API_URL,
-  // NOTE: Do NOT set Content-Type here globally — FormData requests need the browser
-  // to set it automatically with the correct multipart boundary.
-  timeout: 15000,
+  timeout: 30000, // Increased timeout
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
 // Request interceptor
@@ -21,16 +21,16 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // For FormData, let browser set Content-Type with boundary automatically
-    if (config.data instanceof FormData) {
-      delete config.headers['Content-Type'];
-    } else if (!config.headers['Content-Type']) {
-      config.headers['Content-Type'] = 'application/json';
+    
+    // Log requests in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(` ${config.method?.toUpperCase()} ${config.url}`, config.data || '');
     }
+    
     return config;
   },
   (error) => {
-    console.error(' Request error:', error);
+    console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
@@ -38,17 +38,32 @@ api.interceptors.request.use(
 // Response interceptor
 api.interceptors.response.use(
   (response) => {
-    console.log(`✅ API Response: ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
+    }
     return response;
   },
   (error) => {
+    // Handle network errors
     if (error.code === 'ECONNABORTED') {
-      console.error('⏰ Request timeout');
-      return Promise.reject({ message: 'Request timeout. Please try again.' });
+      console.error(' Request timeout');
+      return Promise.reject({ 
+        message: 'Request timeout. Please check your connection and try again.',
+        networkError: true 
+      });
     }
     
+    if (!error.response) {
+      console.error(' Network Error - Cannot connect to server:', API_URL);
+      return Promise.reject({ 
+        message: `Cannot connect to server at ${API_URL}. Please make sure the backend is running.`,
+        networkError: true 
+      });
+    }
+    
+    // Handle HTTP errors
     if (error.response) {
-      console.error('❌ API Error Response:', {
+      console.error(' API Error:', {
         url: error.config?.url,
         method: error.config?.method,
         status: error.response.status,
@@ -57,7 +72,6 @@ api.interceptors.response.use(
       
       // Handle 401 Unauthorized
       if (error.response.status === 401) {
-        console.log('🔐 Unauthorized - clearing auth state');
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         
@@ -67,16 +81,23 @@ api.interceptors.response.use(
       }
       
       return Promise.reject(error.response.data || error);
-    } else if (error.request) {
-      console.error(`❌ No response received from API (${API_URL}). Make sure backend is running and reachable.`);
-      return Promise.reject({ 
-        message: `Cannot connect to server at ${API_URL}. Please check if backend is running.` 
-      });
-    } else {
-      console.error('❌ Request setup error:', error.message);
-      return Promise.reject({ message: error.message || 'An error occurred' });
     }
+    
+    return Promise.reject({ message: error.message || 'An error occurred' });
   }
 );
+
+// Test connection function
+export const testConnection = async () => {
+  try {
+    const response = await api.get('/health');
+    return { success: true, data: response.data };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error.message || 'Could not connect to server'
+    };
+  }
+};
 
 export default api;

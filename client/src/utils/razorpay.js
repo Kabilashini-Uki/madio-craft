@@ -1,4 +1,6 @@
 // src/utils/razorpay.js
+import api from '../services/api';
+
 const loadRazorpay = () => {
   return new Promise((resolve) => {
     if (window.Razorpay) { resolve(true); return; }
@@ -17,9 +19,6 @@ export const displayRazorpay = async (orderData, onSuccess, onError, userInfo = 
     return;
   }
 
-  const token = localStorage.getItem('token');
-  const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
   const options = {
     key: process.env.REACT_APP_RAZORPAY_KEY_ID || '',
     amount: orderData.amount,
@@ -30,27 +29,20 @@ export const displayRazorpay = async (orderData, onSuccess, onError, userInfo = 
     order_id: orderData.id,
     handler: async function (response) {
       try {
-        const verifyResponse = await fetch(`${apiUrl}/orders/verify-payment`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            razorpay_order_id: response.razorpay_order_id,
-            razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_signature: response.razorpay_signature,
-          }),
+        const res = await api.post('/orders/verify-payment', {
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
         });
-        const verifyData = await verifyResponse.json();
-        if (verifyData.success) {
-          onSuccess(verifyData.order);
+
+        if (res.data.success) {
+          onSuccess(res.data.order);
         } else {
-          onError('Payment verification failed. Please contact support.');
+          onError(res.data.message || 'Payment verification failed');
         }
       } catch (err) {
-        console.error('Verify error:', err);
-        onError('Payment verification failed. Please contact support.');
+        console.error('Razorpay verification error:', err);
+        onError('Payment verification failed');
       }
     },
     prefill: {
@@ -60,7 +52,9 @@ export const displayRazorpay = async (orderData, onSuccess, onError, userInfo = 
     },
     theme: { color: '#8B4513' },
     modal: {
-      ondismiss: function () { onError('Payment was cancelled.'); }
+      ondismiss: function () {
+        onError('Payment was cancelled.');
+      }
     }
   };
 

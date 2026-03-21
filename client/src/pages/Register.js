@@ -18,18 +18,18 @@ const BATTICALOA_LOCATIONS = [
 ];
 
 const craftCategories = [
-  { id: 'pottery',    name: 'Pottery & Ceramics', icon: '🏺' },
-  { id: 'jewelry',    name: 'Jewelry Making',      icon: '💎' },
-  { id: 'textiles',   name: 'Textiles & Weaving',  icon: '🧵' },
-  { id: 'woodwork',   name: 'Woodworking',          icon: '🪵' },
-  { id: 'metalwork',  name: 'Metalwork',            icon: '⚒️' },
-  { id: 'glass',      name: 'Glass Art',            icon: '🥂' },
-  { id: 'leather',    name: 'Leather Craft',        icon: '👝' },
-  { id: 'paper',      name: 'Paper Crafts',         icon: '📜' },
-  { id: 'embroidery', name: 'Embroidery',           icon: '🪡' },
-  { id: 'carpentry',  name: 'Carpentry',            icon: '🔨' },
-  { id: 'sculpture',  name: 'Sculpture',            icon: '🗿' },
-  { id: 'other',      name: 'Other Craft',          icon: '🎨' },
+  { id: 'pottery', name: 'Pottery & Ceramics', icon: '🏺' },
+  { id: 'jewelry', name: 'Jewelry Making', icon: '💎' },
+  { id: 'textiles', name: 'Textiles & Weaving', icon: '🧵' },
+  { id: 'woodwork', name: 'Woodworking', icon: '🪵' },
+  { id: 'metalwork', name: 'Metalwork', icon: '⚒️' },
+  { id: 'glass', name: 'Glass Art', icon: '🥂' },
+  { id: 'leather', name: 'Leather Craft', icon: '👝' },
+  { id: 'paper', name: 'Paper Crafts', icon: '📜' },
+  { id: 'embroidery', name: 'Embroidery', icon: '🪡' },
+  { id: 'carpentry', name: 'Carpentry', icon: '🔨' },
+  { id: 'sculpture', name: 'Sculpture', icon: '🗿' },
+  { id: 'other', name: 'Other Craft', icon: '🎨' },
 ];
 
 const Register = () => {
@@ -95,15 +95,17 @@ const Register = () => {
       if (!formData.name.trim()) { toast.error('Please enter your name'); return false; }
       if (!formData.email.trim()) { toast.error('Please enter your email'); return false; }
       if (emailStatus === 'taken') { toast.error('Email is already taken'); return false; }
-      if (formData.password.length < 6) { toast.error('Password must be at least 6 characters'); return false; }
-      if (formData.password !== formData.confirmPassword) { toast.error('Passwords do not match'); return false; }
     }
     if (step === 2) {
       if (!formData.role) { toast.error('Please select a role'); return false; }
     }
-    if (step === 3 && formData.role === 'artisan') {
-      if (!formData.location) { toast.error('Please enter your location'); return false; }
+    if (step === 3) {
+      if (formData.role === 'artisan' && !formData.location) {
+        toast.error('Please enter your location'); return false;
+      }
       if (locationError) { toast.error('Please enter a valid Batticaloa location'); return false; }
+      if (formData.password.length < 6) { toast.error('Password must be at least 6 characters'); return false; }
+      if (formData.password !== formData.confirmPassword) { toast.error('Passwords do not match'); return false; }
     }
     return true;
   };
@@ -128,9 +130,9 @@ const Register = () => {
 
       if (dataToSend.role === 'artisan') {
         dataToSend.artisanProfile = {
-          businessName:      dataToSend.businessName,
-          description:       dataToSend.craftDescription || '',
-          specialties:       dataToSend.specialties.length > 0
+          businessName: dataToSend.businessName,
+          description: dataToSend.craftDescription || '',
+          specialties: dataToSend.specialties.length > 0
             ? dataToSend.specialties
             : (dataToSend.craftCategory ? [dataToSend.craftCategory] : []),
           yearsOfExperience: dataToSend.yearsOfExperience || 0,
@@ -145,10 +147,8 @@ const Register = () => {
       const result = await register(dataToSend);
 
       if (result.success) {
-        toast.success('Registration successful!');
-        if (result.user.role === 'admin') navigate('/admin');
-        else if (result.user.role === 'artisan') navigate('/artisan-dashboard');
-        else navigate('/');
+        toast.success('Registration successful! Please login.');
+        navigate('/login');
       }
     } catch (error) {
       const msg = error.response?.data?.message || 'Registration failed. Please try again.';
@@ -161,7 +161,7 @@ const Register = () => {
   const emailIndicator = () => {
     if (emailStatus === 'checking')
       return <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent" />;
-    if (emailStatus === 'taken')  return <FiAlertCircle className="h-4 w-4 text-red-500" />;
+    if (emailStatus === 'taken') return <FiAlertCircle className="h-4 w-4 text-red-500" />;
     if (emailStatus === 'available') return <FiCheckCircle className="h-4 w-4 text-green-500" />;
     return null;
   };

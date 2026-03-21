@@ -8,35 +8,34 @@ import toast from 'react-hot-toast';
 
 /* ─── Config ──────────────────────────────────────────────────────── */
 const COLORS = [
-  { name: 'Natural Brown',  hex: '#8B4513' },
-  { name: 'Ivory White',    hex: '#FFFFF0', dark: true },
+  { name: 'Natural Brown', hex: '#8B4513' },
+  { name: 'Ivory White', hex: '#FFFFF0', dark: true },
   { name: 'Midnight Black', hex: '#1a1a1a' },
-  { name: 'Ruby Red',       hex: '#9B2335' },
-  { name: 'Ocean Blue',     hex: '#1E6B8C' },
-  { name: 'Forest Green',   hex: '#2D6A4F' },
-  { name: 'Golden Yellow',  hex: '#D4AF37' },
-  { name: 'Rose Pink',      hex: '#E8A0BF', dark: true },
-  { name: 'Deep Purple',    hex: '#6B3FA0' },
-  { name: 'Terracotta',     hex: '#CB6D51' },
-  { name: 'Teal',           hex: '#008080' },
-  { name: 'Cream',          hex: '#FFFDD0', dark: true },
+  { name: 'Ruby Red', hex: '#9B2335' },
+  { name: 'Ocean Blue', hex: '#1E6B8C' },
+  { name: 'Forest Green', hex: '#2D6A4F' },
+  { name: 'Golden Yellow', hex: '#D4AF37' },
+  { name: 'Rose Pink', hex: '#E8A0BF', dark: true },
+  { name: 'Deep Purple', hex: '#6B3FA0' },
+  { name: 'Terracotta', hex: '#CB6D51' },
+  { name: 'Teal', hex: '#008080' },
+  { name: 'Cream', hex: '#FFFDD0', dark: true },
 ];
 
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Custom'];
 
 /* ─── Step indicator ──────────────────────────────────────────────── */
 const StepDot = ({ n, active, done }) => (
-  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-    done   ? 'bg-violet-600 text-white' :
+  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${done ? 'bg-violet-600 text-white' :
     active ? 'bg-violet-100 text-violet-700 ring-2 ring-violet-400' :
-             'bg-gray-100 text-gray-400'
-  }`}>
+      'bg-gray-100 text-gray-400'
+    }`}>
     {done ? <FiCheck className="h-3.5 w-3.5" /> : n}
   </div>
 );
 
 const ProductCustomizationModal = ({ product, onClose }) => {
-  const { user }   = useAuth();
+  const { user } = useAuth();
 
   // Effective role: respects buyer-mode switching
   const effectiveRole = user?.activeRole || user?.role;
@@ -45,16 +44,16 @@ const ProductCustomizationModal = ({ product, onClose }) => {
     String(user.id || user._id) === String(product.artisan?._id || product.artisan)
   );
 
-  const [color,   setColor]   = useState(null);
-  const [size,    setSize]    = useState('');
-  const [notes,   setNotes]   = useState('');
-  const [step,    setStep]    = useState(1);   // 1=colour  2=size  3=notes+review
-  const [status,  setStatus]  = useState('idle'); // idle | sending | sent
+  const [color, setColor] = useState(null);
+  const [size, setSize] = useState('');
+  const [notes, setNotes] = useState('');
+  const [step, setStep] = useState(1);   // 1=colour  2=size  3=notes+review
+  const [status, setStatus] = useState('idle'); // idle | sending | sent
 
-  const hasColor  = Boolean(color);
-  const hasSize   = Boolean(size);
-  const hasNotes  = notes.trim().length > 0;
-  const hasAny    = hasColor || hasSize || hasNotes;
+  const hasColor = Boolean(color);
+  const hasSize = Boolean(size);
+  const hasNotes = notes.trim().length > 0;
+  const hasAny = hasColor || hasSize || hasNotes;
 
   /* ─── Submit ──────────────────────────────────────────────────── */
   const handleSend = useCallback(async () => {
@@ -79,7 +78,7 @@ const ProductCustomizationModal = ({ product, onClose }) => {
         onClose();
       }, 1000);
 
-    } catch {
+    } catch (error) {
       setStatus('idle');
       toast.error('Failed to send. Try again.');
     }
@@ -202,11 +201,10 @@ const ProductCustomizationModal = ({ product, onClose }) => {
                         whileHover={{ scale: 1.12 }}
                         onClick={() => setColor(prev => prev?.name === c.name ? null : c)}
                         title={c.name}
-                        className={`relative w-11 h-11 rounded-full border-3 shadow-sm transition-all ${
-                          color?.name === c.name
-                            ? 'border-violet-500 ring-4 ring-violet-200 scale-110'
-                            : 'border-gray-200 hover:border-violet-300'
-                        }`}
+                        className={`relative w-11 h-11 rounded-full border-3 shadow-sm transition-all ${color?.name === c.name
+                          ? 'border-violet-500 ring-4 ring-violet-200 scale-110'
+                          : 'border-gray-200 hover:border-violet-300'
+                          }`}
                         style={{ backgroundColor: c.hex, borderWidth: color?.name === c.name ? 3 : 2 }}
                       >
                         {color?.name === c.name && (
@@ -247,11 +245,10 @@ const ProductCustomizationModal = ({ product, onClose }) => {
                         key={s}
                         whileTap={{ scale: 0.92 }}
                         onClick={() => setSize(prev => prev === s ? '' : s)}
-                        className={`py-3 rounded-xl border-2 font-semibold text-sm transition-all ${
-                          size === s
-                            ? 'border-violet-500 bg-violet-500 text-white shadow-md scale-105'
-                            : 'border-gray-200 text-gray-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700'
-                        }`}
+                        className={`py-3 rounded-xl border-2 font-semibold text-sm transition-all ${size === s
+                          ? 'border-violet-500 bg-violet-500 text-white shadow-md scale-105'
+                          : 'border-gray-200 text-gray-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700'
+                          }`}
                       >
                         {s}
                       </motion.button>
@@ -366,11 +363,10 @@ const ProductCustomizationModal = ({ product, onClose }) => {
                 whileTap={{ scale: 0.97 }}
                 onClick={handleSend}
                 disabled={status !== 'idle' || !hasAny || isOwnProduct || !canSendRequest}
-                className={`flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all ${
-                  status === 'sent'
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:shadow-lg disabled:opacity-50'
-                }`}
+                className={`flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all ${status === 'sent'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:shadow-lg disabled:opacity-50'
+                  }`}
               >
                 {status === 'sent' ? (
                   <><FiCheck className="h-4 w-4" /> Sent!</>

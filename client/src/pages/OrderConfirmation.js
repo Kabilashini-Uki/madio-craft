@@ -119,7 +119,6 @@ const OrderConfirmation = () => {
   const steps = [
     { icon: <FiCheckCircle />, label: 'Order Placed', done: true },
     { icon: <FiPackage />, label: 'Processing', done: false },
-    { icon: <FiTruck />, label: 'Shipped', done: false },
     { icon: <FiMapPin />, label: 'Delivered', done: false },
   ];
 

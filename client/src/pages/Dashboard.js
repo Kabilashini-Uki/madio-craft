@@ -68,7 +68,6 @@ const Dashboard = () => {
 
   const recentOrders = [
     { id: 'ORD-2024-001', date: 'Feb 10, 2024', total: 2499, status: 'Delivered', items: 2 },
-    { id: 'ORD-2024-002', date: 'Feb 8, 2024', total: 3899, status: 'Shipped', items: 1 },
     { id: 'ORD-2024-003', date: 'Feb 5, 2024', total: 1299, status: 'Processing', items: 3 },
     { id: 'ORD-2024-004', date: 'Feb 3, 2024', total: 5299, status: 'Confirmed', items: 2 },
   ];

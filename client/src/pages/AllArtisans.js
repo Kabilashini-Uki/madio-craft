@@ -3,11 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiPackage } from 'react-icons/fi';
-import { 
-  FiMapPin, 
-  FiStar, 
-  FiAward, 
-  FiUsers, 
+import {
+  FiMapPin,
+  FiStar,
+  FiAward,
+  FiUsers,
   FiSearch,
   FiFilter,
   FiChevronRight,
@@ -34,7 +34,7 @@ const AllArtisans = () => {
   const [showProductModal, setShowProductModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
-  const handleViewShop = (artisanId) => navigate(`/artisans/${artisanId}`);
+  const handleViewShop = (artisanId) => navigate(`/artisans/${artisanId}/shop`);
 
   const handleContact = (artisanId) => {
     if (!localStorage.getItem('token')) {
@@ -63,17 +63,17 @@ const AllArtisans = () => {
         const raw = res.data.artisans || res.data.artisans || [];
         const normalized = raw.map(a => ({
           _id: a._id || a.id,
-          name: a.businessName || a.name || (a.user && a.user.name) || 'Unknown',
-          business: a.businessName || a.tagline || '',
-          specialty: a.craftCategory || (a.specialties && a.specialties[0]) || 'other',
-          location: `${a.address?.city || ''}${a.address?.state ? ', ' + a.address.state : ''}`.trim(),
-          rating: a.ratings?.average || a.rating || 0,
-          reviews: a.ratings?.count || a.reviews || 0,
-          description: a.description || a.tagline || '',
-          image: a.profileImage?.url || a.profileImage || a.avatar?.url || '',
-          products: a.stats?.totalProducts || a.totalProducts || 0,
-          followers: a.stats?.followerCount || a.followers || 0,
-          verified: a.isVerified || a.verified || false,
+          name: a.name || (a.artisanProfile && a.artisanProfile.businessName) || (a.user && a.user.name) || 'Unknown',
+          business: a.artisanProfile?.businessName || a.tagline || '',
+          specialty: a.artisanProfile?.specialties?.[0] || 'other',
+          location: a.location || '',
+          rating: a.artisanProfile?.ratings?.average || 0,
+          reviews: a.artisanProfile?.ratings?.count || 0,
+          description: a.artisanProfile?.description || a.bio || '',
+          image: a.avatar?.url || '',
+          products: a.stats?.totalProducts || 0,
+          followers: a.stats?.followerCount || 0,
+          verified: a.isVerified || false,
           awards: a.awards || []
         }));
         setArtisans(normalized);
@@ -90,24 +90,14 @@ const AllArtisans = () => {
 
   const filteredArtisans = artisans.filter(artisan => {
     const matchesSearch = (artisan.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (artisan.business || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (artisan.specialty || '').toLowerCase().includes(searchTerm.toLowerCase());
+      (artisan.business || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (artisan.specialty || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || (artisan.specialty || '').toLowerCase() === selectedCategory;
     const matchesLocation = selectedLocation === 'all' || (artisan.location || '').includes(selectedLocation);
     return matchesSearch && matchesCategory && matchesLocation;
   });
 
-  const openArtisan = async (artisanId) => {
-    try {
-      const res = await api.get(`/artisans/${artisanId}`);
-      const data = res.data.artisan || res.data;
-      setSelectedArtisan(data);
-      setShowArtisanModal(true);
-    } catch (err) {
-      console.error('Failed to load artisan details', err);
-      toast.error('Failed to load artisan details');
-    }
-  };
+  const openArtisan = (artisanId) => handleViewShop(artisanId);
 
   const closeArtisan = () => { setShowArtisanModal(false); setSelectedArtisan(null); };
 
@@ -306,7 +296,7 @@ const AllArtisans = () => {
             ))}
           </div>
         )}
-        
+
         {/* Artisan Modal */}
         {showArtisanModal && selectedArtisan && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -387,9 +377,9 @@ const AllArtisans = () => {
             </div>
           </div>
         )}
-       </div>
-     </div>
-   );
- };
- 
- export default AllArtisans;
+      </div>
+    </div>
+  );
+};
+
+export default AllArtisans;

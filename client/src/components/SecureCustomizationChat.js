@@ -1,7 +1,7 @@
 // src/components/SecureCustomizationChat.js
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   FiSend, FiPaperclip, FiImage, FiX, FiCheck,
   FiClock, FiShoppingCart, FiUser, FiStar,
   FiDownload, FiEye, FiTrash2, FiMessageCircle,
@@ -13,28 +13,28 @@ import { useCart } from '../context/CartContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
-const SecureCustomizationChat = ({ 
-  isOpen, 
-  onClose, 
-  product, 
+const SecureCustomizationChat = ({
+  isOpen,
+  onClose,
+  product,
   artisan,
-  initialCustomization = null 
+  initialCustomization = null
 }) => {
   const { user } = useAuth();
-  const { 
-    joinRoom, 
-    leaveRoom, 
-    sendMessage, 
-    messages, 
+  const {
+    joinRoom,
+    leaveRoom,
+    sendMessage,
+    messages,
     activeRoom,
     sendTyping,
     createCustomizationRoom,
     updateCustomization,
-    loading 
+    loading
   } = useSecureChat();
-  
+
   const { addToCart } = useCart();
-  
+
   const [chatMessage, setChatMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState(null);
@@ -52,7 +52,7 @@ const SecureCustomizationChat = ({
   const [showQuote, setShowQuote] = useState(false);
   const [quoteAccepted, setQuoteAccepted] = useState(false);
   const [roomInitialized, setRoomInitialized] = useState(false);
-  
+
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -62,7 +62,7 @@ const SecureCustomizationChat = ({
     if (isOpen && user && product && !roomInitialized) {
       initializeChat();
     }
-    
+
     return () => {
       if (activeRoom) {
         leaveRoom();
@@ -104,7 +104,7 @@ const SecureCustomizationChat = ({
         product?._id,
         customizationData
       );
-      
+
       if (room) {
         await joinRoom(room._id);
         setRoomInitialized(true);
@@ -119,18 +119,18 @@ const SecureCustomizationChat = ({
     if (!chatMessage.trim() && attachments.length === 0) return;
 
     let messageText = chatMessage;
-    
+
     // Add attachments to message
     if (attachments.length > 0) {
       const attachmentUrls = attachments.map(a => a.url).join('\n');
       messageText = `${chatMessage}\n\n📎 Attachments:\n${attachmentUrls}`;
-      
+
       // Clear attachments after sending
       setAttachments([]);
     }
 
     const success = await sendMessage(messageText, customizationData._id);
-    
+
     if (success) {
       setChatMessage('');
     }
@@ -141,17 +141,17 @@ const SecureCustomizationChat = ({
     if (files.length === 0) return;
 
     setUploading(true);
-    
+
     try {
       const uploadPromises = files.map(async (file) => {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('type', 'chat_attachment');
-        
-        const response = await api.post('/upload/chat', formData, {
+
+        const response = await api.post('/users/upload/chat', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
-        
+
         return {
           url: response.data.url,
           name: file.name,
@@ -159,10 +159,10 @@ const SecureCustomizationChat = ({
           size: file.size
         };
       });
-      
+
       const uploadedFiles = await Promise.all(uploadPromises);
       setAttachments(prev => [...prev, ...uploadedFiles]);
-      
+
       toast.success(`${uploadedFiles.length} file(s) uploaded`);
     } catch (error) {
       toast.error('Failed to upload files');
@@ -178,26 +178,26 @@ const SecureCustomizationChat = ({
   const handleQuoteAction = async (accept) => {
     if (accept) {
       setQuoteAccepted(true);
-      await updateCustomization(customizationData._id, { 
+      await updateCustomization(customizationData._id, {
         status: 'accepted',
         acceptedAt: new Date().toISOString()
       });
-      
+
       await sendMessage(
         `✅ I accept the quote of Rs${customizationData.price}. Please proceed with the customization.`,
         customizationData._id
       );
-      
+
       toast.success('Quote accepted!');
     } else {
       await sendMessage(
         `❌ I'd like to negotiate the price. Can we discuss further?`,
         customizationData._id
       );
-      
+
       toast.success('Quote declined - you can continue negotiating');
     }
-    
+
     setShowQuote(false);
   };
 
@@ -208,7 +208,7 @@ const SecureCustomizationChat = ({
       quantity: customizationData.quantity,
       finalPrice: customizationData.price
     };
-    
+
     addToCart(cartItem);
     toast.success('Custom item added to cart!');
     onClose();
@@ -313,19 +313,18 @@ const SecureCustomizationChat = ({
                 key={msg._id || index}
                 className={`flex ${msg.isOwn ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                  msg.isOwn
+                <div className={`max-w-[80%] rounded-2xl px-4 py-2 ${msg.isOwn
                     ? 'bg-primary text-white rounded-br-none'
                     : 'bg-white text-gray-900 shadow-sm rounded-bl-none'
-                }`}>
+                  }`}>
                   {!msg.isOwn && (
                     <p className="text-xs font-medium text-primary mb-1">
                       {msg.senderName}
                     </p>
                   )}
-                  
+
                   <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
-                  
+
                   {msg.attachments?.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {msg.attachments.map((att, i) => (
@@ -340,14 +339,13 @@ const SecureCustomizationChat = ({
                       ))}
                     </div>
                   )}
-                  
+
                   <div className="flex items-center justify-between mt-1">
-                    <span className={`text-xs ${
-                      msg.isOwn ? 'text-primary-light' : 'text-gray-500'
-                    }`}>
-                      {new Date(msg.timestamp).toLocaleTimeString([], { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
+                    <span className={`text-xs ${msg.isOwn ? 'text-primary-light' : 'text-gray-500'
+                      }`}>
+                      {new Date(msg.timestamp).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit'
                       })}
                     </span>
                     {msg.isOwn && msg.status === 'sending' && (
@@ -357,7 +355,7 @@ const SecureCustomizationChat = ({
                 </div>
               </div>
             ))}
-            
+
             {/* Quote Request Card */}
             {showQuote && (
               <div className="bg-white rounded-2xl shadow-lg p-4 border-2 border-primary/20">
@@ -386,7 +384,7 @@ const SecureCustomizationChat = ({
                 </div>
               </div>
             )}
-            
+
             {/* Accepted Confirmation */}
             {quoteAccepted && (
               <div className="bg-green-50 rounded-2xl p-4 border border-green-200">
@@ -410,7 +408,7 @@ const SecureCustomizationChat = ({
                 </button>
               </div>
             )}
-            
+
             <div ref={chatEndRef} />
           </div>
 
@@ -463,7 +461,7 @@ const SecureCustomizationChat = ({
                 accept="image/*,.pdf,.doc,.docx"
                 className="hidden"
               />
-              
+
               <input
                 type="text"
                 value={chatMessage}
@@ -473,7 +471,7 @@ const SecureCustomizationChat = ({
                 className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
                 disabled={!activeRoom}
               />
-              
+
               <button
                 onClick={handleSendMessage}
                 disabled={(!chatMessage.trim() && attachments.length === 0) || !activeRoom}

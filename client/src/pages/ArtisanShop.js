@@ -3,8 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useNotif } from '../context/NotifContext';
-
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+import api from '../services/api';
 
 export default function ArtisanShop() {
   const { id } = useParams();
@@ -21,10 +20,12 @@ export default function ArtisanShop() {
   const [showCoverUpload, setShowCoverUpload] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/artisans/${id}`)
-      .then(r => r.json())
-      .then(d => setArtisan(d.artisan))
-      .catch(() => { })
+    setLoading(true);
+    api.get(`/artisans/${id}`)
+      .then(res => setArtisan(res.data.artisan))
+      .catch((err) => {
+        console.error('Error fetching artisan:', err);
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -46,20 +47,17 @@ export default function ArtisanShop() {
     if (!user) { navigate('/login'); return; }
     if (!chatMessage.trim()) return;
     try {
-      const res = await fetch(`${API}/chat/rooms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ artisanId: id, initialMessage: chatMessage })
-      });
-      if (res.ok) {
+      const res = await api.post('/chat/room', { artisanId: id, initialMessage: chatMessage });
+      if (res.data.success || res.status === 200 || res.status === 201) {
         addToast('Message sent! The artisan will respond soon.', 'success');
         setChatMessage('');
         setShowChat(false);
       } else {
         addToast('Failed to send message', 'error');
       }
-    } catch {
-      addToast('Failed to send message', 'error');
+    } catch (err) {
+      console.error('Chat error:', err);
+      addToast(err.message || 'Failed to send message', 'error');
     }
   };
 
@@ -74,25 +72,27 @@ export default function ArtisanShop() {
       {/* Cover - Editable */}
       <div style={{
         height: 280,
-        background: `url(${coverImageUrl || artisan.coverImage || 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg'}) center/cover`,
+        background: `url(${coverImageUrl || artisan.coverImage?.url || artisan.coverImage || 'https://images.pexels.com/photos/18633243/pexels-photo-18633243.jpeg'}) center/cover`,
         backgroundColor: '#8B4513', position: 'relative'
       }}>
         <div style={{
           position: 'absolute', inset: 0,
           background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.6) 100%)'
         }} />
-        {/* Upload banner button - visible always for artisan owner or as demo */}
-        <button
-          onClick={() => setShowCoverUpload(true)}
-          style={{
-            position: 'absolute', top: 16, right: 16,
-            background: 'rgba(0,0,0,0.6)', color: 'white', border: '2px solid white',
-            padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-            display: 'flex', alignItems: 'center', gap: 6
-          }}
-        >
-          📷 Change Cover Photo
-        </button>
+        {/* Upload banner button - visible only for artisan owner */}
+        {user && (String(user._id || user.id) === String(artisan._id || artisan.id)) && (
+          <button
+            onClick={() => setShowCoverUpload(true)}
+            style={{
+              position: 'absolute', top: 16, right: 16,
+              background: 'rgba(0,0,0,0.6)', color: 'white', border: '2px solid white',
+              padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6
+            }}
+          >
+            📷 Change Cover Photo
+          </button>
+        )}
       </div>
 
       {/* Cover Image Upload Modal */}
@@ -112,9 +112,25 @@ export default function ArtisanShop() {
                 const file = e.target.files[0];
                 if (file) {
                   const reader = new FileReader();
-                  reader.onload = ev => {
+                  reader.onload = async (ev) => {
                     setCoverImageUrl(ev.target.result);
                     setShowCoverUpload(false);
+                    // Actual upload to server
+                    try {
+                      const fd = new FormData();
+                      fd.append('coverImage', file);
+                      const resp = await api.post('/users/cover', fd, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                      });
+                      if (resp.data.success) {
+                        addToast('Cover image updated successfully!', 'success');
+                      } else {
+                        addToast(resp.data.message || 'Failed to save cover', 'error');
+                      }
+                    } catch (err) {
+                      console.error('Upload error:', err);
+                      addToast('Failed to upload cover image', 'error');
+                    }
                   };
                   reader.readAsDataURL(file);
                 }

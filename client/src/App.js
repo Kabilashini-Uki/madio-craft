@@ -27,6 +27,8 @@ import ArtisanDetail from './pages/ArtisanDetail';
 import ArtisanShop from './pages/ArtisanShop';
 import Chat from './pages/Chat';
 import OrderTracking from './pages/OrderTracking';
+import CustomizationDetail from './pages/CustomizationDetail';
+import NotificationsPage from './pages/Notifications';
 
 import { useAuth } from './context/AuthContext';
 
@@ -64,13 +66,12 @@ const AppLayout = () => {
   const hideLayout = NO_LAYOUT_PATHS.some(p => location.pathname === p || location.pathname.startsWith(p + '/'));
 
   useEffect(() => {
-    // Issue 18: logout on every fresh app start (npm start / page reload)
-    const isFirstLoad = !sessionStorage.getItem('app_session_started');
-    if (isFirstLoad) {
+    // Session tracking for first load - ensure fresh start on new session
+    if (!sessionStorage.getItem('app_session_started')) {
       sessionStorage.setItem('app_session_started', 'true');
       logout(true);
     }
-  }, []);
+  }, [logout]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -99,6 +100,8 @@ const AppLayout = () => {
           <Route path="/order-tracking/:id" element={<ProtectedRoute><OrderTracking /></ProtectedRoute>} />
           <Route path="/artisan-dashboard" element={<ProtectedRoute><ArtisanDashboard /></ProtectedRoute>} />
           <Route path="/chat/:roomId" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+          <Route path="/customization/:id" element={<ProtectedRoute><CustomizationDetail /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/admin/*" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
           <Route path="*" element={
             <div className="min-h-screen flex items-center justify-center">
