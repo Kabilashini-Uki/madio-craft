@@ -1,337 +1,282 @@
 // src/pages/ProductDetail.js
+
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api';
-import { FaStar, FaHeart, FaShoppingCart, FaTruck, FaShieldAlt, FaArrowLeft } from 'react-icons/fa';
-import { FiMessageCircle } from 'react-icons/fi';
+import { FaHeart } from 'react-icons/fa';
+import { FiEdit3 } from 'react-icons/fi';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import ProductCustomizationModal from '../components/ProductCustomizationModal';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { useNotif } from '../context/NotifContext';
+import ProductCustomizationModal from '../components/ProductCustomizationModal';
 
 const ProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+
+  const { isAuthenticated, user } = useAuth();
   const { addToCart, isInWishlist, addToWishlist, removeFromWishlist } = useCart();
-  const { isCustomizationApproved, getCustomizationData } = useNotif();
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState(0);
-  const [showCustomization, setShowCustomization] = useState(false);
-  const [addingToCart, setAddingToCart] = useState(false);
-  const [buyingNow, setBuyingNow] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+  const [custBounce, setCustBounce] = useState(false);
+  const location = useLocation();
 
   const inWishlist = product ? isInWishlist(product._id) : false;
-  const custApproved = product ? isCustomizationApproved(product._id) : false;
-  const approvedData = product ? getCustomizationData(product._id) : null;
+  const isOwner = isAuthenticated && user && product && (product.artisan === user.id || product.artisan?._id === user.id);
 
-  const fetchProduct = React.useCallback(async () => {
+  // Fetch product
+  const fetchProduct = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/products/${id}`);
-      const prod = response.data.product || response.data;
+      const res = await api.get(`/products/${id}`);
+
+      // Handle different response structures
+      let prod = null;
+      if (res.data.success && res.data.product) {
+        prod = res.data.product;
+      } else if (res.data.product) {
+        prod = res.data.product;
+      } else if (res.data._id) {
+        prod = res.data;
+      }
+
+      if (!prod || !prod._id) {
+        throw new Error('Invalid product data');
+      }
+
       setProduct(prod);
-    } catch (error) {
-      console.error('Failed to load product:', error);
-      toast.error('Failed to load product');
+    } catch (err) {
+      console.error('Failed to load product:', err);
+      toast.error('Product not found');
       navigate('/products');
     } finally {
       setLoading(false);
     }
-  }, [id, navigate]);
+  };
 
   useEffect(() => {
     fetchProduct();
-  }, [id, fetchProduct]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
+  // Handle ?customize=true
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('customize') === 'true') {
+      setShowCustom(true);
+    }
+  }, [location.search]);
+
+  // Add to cart
   const handleAddToCart = async () => {
-    if (!isAuthenticated) { toast.error('Please login'); navigate('/login'); return; }
-    setAddingToCart(true);
-    try {
-      // If customization is approved, use that data
-      const customizationData = custApproved ? {
-        color: approvedData.color,
-        size: approvedData.size,
-        notes: approvedData.notes,
-        customPrice: approvedData.customizationPrice
-      } : null;
+    if (!isAuthenticated) {
+      toast.error('Please login');
+      navigate('/login');
+      return;
+    }
 
-      await addToCart(product, customizationData, quantity);
+    try {
+      await addToCart(product, null, quantity);
       toast.success('Added to cart!');
-    } catch (error) {
-      toast.error(error?.message || 'Failed to add to cart');
-    } finally {
-      setAddingToCart(false);
+    } catch {
+      toast.error('Failed');
     }
   };
 
+  // Buy now
   const handleBuyNow = async () => {
-    if (!isAuthenticated) { toast.error('Please login'); navigate('/login'); return; }
-    setBuyingNow(true);
-    try {
-      const customizationData = custApproved ? {
-        color: approvedData.color,
-        size: approvedData.size,
-        notes: approvedData.notes,
-        customPrice: approvedData.customizationPrice
-      } : null;
+    if (!isAuthenticated) {
+      toast.error('Please login');
+      navigate('/login');
+      return;
+    }
 
-      const success = await addToCart(product, customizationData, quantity);
+    try {
+      const success = await addToCart(product, null, quantity);
       if (success) navigate('/cart');
-    } catch (error) {
-      toast.error(error?.message || 'Failed');
-    } finally {
-      setBuyingNow(false);
+    } catch {
+      toast.error('Failed');
     }
   };
 
+  // Wishlist
   const handleWishlistToggle = async () => {
-    if (!isAuthenticated) { toast.error('Please login'); navigate('/login'); return; }
+    if (!isAuthenticated) {
+      toast.error('Please login');
+      navigate('/login');
+      return;
+    }
+
     if (inWishlist) await removeFromWishlist(product._id);
     else await addToWishlist(product);
   };
 
+  const openCustomize = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!isAuthenticated) { toast.error('Please login to customise'); navigate('/login'); return; }
+    if (isOwner) { toast.error("You can't customise your own product", { icon: '🚫' }); return; }
+
+    setCustBounce(true);
+    setTimeout(() => setCustBounce(false), 500);
+    setShowCustom(true);
+  };
+
+  // Loading
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-16 w-16 border-4 border-amber-700 border-t-transparent"></div>
+        <div className="h-14 w-14 border-4 border-amber-700 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
+  // No product
   if (!product) {
     return (
-      <div className="text-center py-16">
-        <h2 className="text-2xl font-bold text-gray-700">Product not found</h2>
-        <button onClick={() => navigate('/products')} className="mt-4 text-amber-700 hover:underline">
-          ← Back to Products
-        </button>
+      <div className="text-center mt-20">
+        <h2 className="text-xl font-bold">Product not found</h2>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white pt-24">
-      <div className="container mx-auto px-4 py-8">
-        {/* Back Button */}
-        <button onClick={() => navigate(-1)} className="flex items-center space-x-2 text-gray-600 hover:text-amber-700 mb-6">
-          <FaArrowLeft /><span>Back</span>
-        </button>
+    <div className="min-h-screen bg-[#FDFBF7] pt-24 px-4">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10">
 
-        {/* FIXED: Two-column layout with proper alignment */}
-        <div className="flex flex-col lg:flex-row gap-12">
-          {/* Left Column - Product Images */}
-          <div className="lg:w-1/2">
-            <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-4">
-              <img
-                src={product.images?.[activeImage]?.url || product.images?.[0]?.url || 'https://via.placeholder.com/600'}
-                alt={product.name}
-                className="w-full h-96 object-cover"
-              />
-            </div>
-
-            {/* Thumbnails */}
-            {product.images && product.images.length > 1 && (
-              <div className="flex space-x-4 overflow-x-auto">
-                {product.images.map((img, index) => (
-                  <button key={index}
-                    onClick={() => setActiveImage(index)}
-                    className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 ${activeImage === index ? 'border-amber-700' : 'border-transparent'
-                      }`}>
-                    <img src={img.url} alt="" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
+        {/* LEFT — IMAGE */}
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl shadow overflow-hidden aspect-square">
+            <img
+              src={
+                product.images?.[activeImage]?.url ||
+                product.images?.[0]?.url ||
+                'https://via.placeholder.com/600'
+              }
+              alt={product.name}
+              className="w-full h-full object-cover"
+            />
           </div>
 
-          {/* Right Column - Product Details */}
-          <div className="lg:w-1/2 space-y-6">
-            {/* Category Breadcrumb */}
-            <div className="text-sm text-gray-600">
-              <span className="cursor-pointer hover:text-amber-700" onClick={() => navigate('/')}>Home</span>
-              <span className="mx-2">/</span>
-              <span className="cursor-pointer hover:text-amber-700" onClick={() => navigate('/products')}>Products</span>
-              <span className="mx-2">/</span>
-              <span className="text-amber-700 font-semibold capitalize">{product.category}</span>
-            </div>
-
-            {/* Product Name */}
-            <h1 className="text-4xl font-serif font-bold text-gray-900">{product.name}</h1>
-
-            {/* Artisan Info */}
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200">
+          {/* Thumbnails */}
+          {product.images?.length > 1 && (
+            <div className="flex gap-2">
+              {product.images.map((img, i) => (
                 <img
-                  src={product.artisan?.avatar?.url || 'https://via.placeholder.com/48'}
-                  alt={product.artisan?.name}
-                  className="w-full h-full object-cover"
+                  key={i}
+                  src={img.url}
+                  alt="Thumbnail"
+                  onClick={() => setActiveImage(i)}
+                  className={`w-16 h-16 object-cover rounded cursor-pointer border-2 ${activeImage === i
+                    ? 'border-amber-700'
+                    : 'border-gray-200'
+                    }`}
                 />
-              </div>
-              <div>
-                <p className="font-semibold">By {product.artisan?.name || 'Artisan'}</p>
-                <p className="text-sm text-gray-600">{product.artisan?.location}</p>
-              </div>
-            </div>
-
-            {/* Rating & Actions */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="flex text-yellow-400">
-                  {[...Array(5)].map((_, i) => (
-                    <FaStar key={i} className={i < Math.floor(product.ratings?.average || 0) ? 'fill-current' : 'text-gray-300'} />
-                  ))}
-                </div>
-                <span className="font-semibold">{product.ratings?.average?.toFixed(1) || '0.0'}</span>
-                <span className="text-gray-500">({product.ratings?.count || 0} reviews)</span>
-              </div>
-
-              <button onClick={handleWishlistToggle} className="text-gray-500 hover:text-red-500">
-                <FaHeart className={`h-6 w-6 ${inWishlist ? 'fill-current text-red-500' : ''}`} />
-              </button>
-            </div>
-
-            {/* Stock Status */}
-            <div className={`font-semibold ${product.stock > 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {product.stock === 0 ? 'Out of Stock' : `In Stock (${product.stock} available)`}
-            </div>
-
-            {/* Price */}
-            <div className="text-5xl font-bold text-amber-700 py-4">
-              Rs. {product.price?.toLocaleString()}
-            </div>
-
-            {/* Quantity Selector */}
-            {product.stock > 0 && (
-              <div className="flex items-center space-x-4">
-                <label className="font-semibold">Quantity:</label>
-                <div className="flex items-center border-2 border-gray-200 rounded-full">
-                  <button onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="w-10 h-10 flex items-center justify-center text-xl hover:bg-gray-100 rounded-l-full">
-                    −
-                  </button>
-                  <span className="w-16 text-center text-xl font-bold">{quantity}</span>
-                  <button onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
-                    className="w-10 h-10 flex items-center justify-center text-xl hover:bg-gray-100 rounded-r-full">
-                    +
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons - Properly aligned */}
-            <div className="flex flex-col sm:flex-row gap-4 pt-4">
-              <button
-                onClick={handleAddToCart}
-                disabled={addingToCart || product.stock === 0}
-                className="flex-1 py-4 bg-amber-700 text-white rounded-xl font-semibold hover:bg-amber-800 disabled:opacity-50 flex items-center justify-center space-x-2">
-                <FaShoppingCart />
-                <span>{addingToCart ? 'Adding...' : 'Add to Cart'}</span>
-              </button>
-
-              <button
-                onClick={handleBuyNow}
-                disabled={buyingNow || product.stock === 0}
-                className={`flex-1 py-4 text-white rounded-xl font-semibold transition-all shadow-md ${custApproved ? 'bg-green-600 hover:bg-green-700 ring-4 ring-green-100' : 'bg-gray-900 hover:bg-gray-800'
-                  } disabled:opacity-50`}>
-                {buyingNow ? 'Processing...' : custApproved ? '🛒 Buy Customised' : 'Buy Now'}
-              </button>
-
-              {product.isCustomizable && product.stock > 0 && (
-                <button
-                  onClick={() => {
-                    if (!isAuthenticated) {
-                      toast.error('Please login to request customization');
-                      navigate('/login', { state: { from: `/products/${product._id}` } });
-                      return;
-                    }
-                    setShowCustomization(true);
-                  }}
-                  className="py-4 px-6 border-2 border-amber-700 text-amber-700 rounded-xl font-semibold hover:bg-amber-50 flex items-center justify-center space-x-2">
-                  <FiMessageCircle />
-                  <span>Customize</span>
-                </button>
-              )}
-            </div>
-
-            {/* Description */}
-            <div className="pt-6 border-t">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Product Description</h3>
-              <p className="text-gray-700 leading-relaxed">{product.description}</p>
-            </div>
-
-            {/* Features */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 p-4 rounded-xl">
-                <div className="flex items-center space-x-3">
-                  <div className="bg-amber-100 p-3 rounded-full">
-                    <FaTruck className="text-amber-700" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Free Shipping</p>
-                    <p className="text-sm text-gray-600">On orders over Rs. 999</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 p-4 rounded-xl">
-                <div className="flex items-center space-x-3">
-                  <div className="bg-amber-100 p-3 rounded-full">
-                    <FaShieldAlt className="text-amber-700" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Secure Payment</p>
-                    <p className="text-sm text-gray-600">100% satisfaction guarantee</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Reviews Section */}
-        {product.ratings?.reviews?.length > 0 && (
-          <div className="mt-16 pt-8 border-t">
-            <h2 className="text-2xl font-bold text-gray-900 mb-8">Customer Reviews</h2>
-            <div className="space-y-6">
-              {product.ratings.reviews.map((review, i) => (
-                <div key={i} className="bg-gray-50 rounded-xl p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold">
-                      {review.user?.name?.[0] || 'U'}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex justify-between">
-                        <span className="font-semibold">{review.user?.name || 'Customer'}</span>
-                        <span className="text-sm text-gray-400">
-                          {new Date(review.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="flex text-yellow-400 mt-2">
-                        {[...Array(5)].map((_, j) => (
-                          <FaStar key={j} className={j < review.rating ? 'fill-current' : 'text-gray-300'} />
-                        ))}
-                      </div>
-                      <p className="text-gray-600 mt-2">{review.comment}</p>
-                    </div>
-                  </div>
-                </div>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* RIGHT — CARD */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 space-y-5">
+
+          {/* Name */}
+          <h1 className="text-2xl font-bold text-gray-900">
+            {product.name}
+          </h1>
+
+          {/* Price */}
+          <p className="text-3xl font-bold text-amber-700">
+            Rs. {product.price?.toLocaleString()}
+          </p>
+
+
+
+          {/* Description */}
+          <p className="text-gray-600">
+            {product.description}
+          </p>
+
+          {/* Quantity */}
+          {product.stock > 0 && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() =>
+                  setQuantity(Math.max(1, quantity - 1))
+                }
+                className="px-3 py-1 bg-gray-200 rounded"
+              >
+                -
+              </button>
+
+              <span className="font-semibold">{quantity}</span>
+
+              <button
+                onClick={() =>
+                  setQuantity(Math.min(product.stock, quantity + 1))
+                }
+                className="px-3 py-1 bg-gray-200 rounded"
+              >
+                +
+              </button>
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleAddToCart}
+              disabled={isOwner}
+              className={`flex-1 py-3 rounded-xl font-semibold ${isOwner ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-amber-700 text-white'}`}
+            >
+              {isOwner ? 'Your Product' : 'Add to Cart'}
+            </button>
+
+            <button
+              onClick={handleBuyNow}
+              disabled={isOwner}
+              className={`flex-1 py-3 rounded-xl font-semibold ${isOwner ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-black text-white'}`}
+            >
+              {isOwner ? 'Your Product' : 'Buy Now'}
+            </button>
           </div>
-        )}
+
+          <motion.button
+            onClick={openCustomize}
+            animate={custBounce ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] } : {}}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            disabled={isOwner}
+            className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${isOwner
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-200'
+              }`}
+          >
+            <FiEdit3 className="text-xl" />
+            {isOwner ? 'Customisation Disabled' : 'Customise this Product'}
+          </motion.button>
+
+          {/* Wishlist */}
+          <button
+            onClick={handleWishlistToggle}
+            className="flex items-center gap-2 text-gray-500"
+          >
+            <FaHeart className={inWishlist ? 'text-red-500' : ''} />
+            {inWishlist ? 'In Wishlist' : 'Add to Wishlist'}
+          </button>
+
+        </div>
       </div>
 
-      {/* Customization Modal */}
-      {showCustomization && (
-        <ProductCustomizationModal
-          product={product}
-          onClose={() => setShowCustomization(false)}
-        />
+      {showCustom && (
+        <ProductCustomizationModal product={product} onClose={() => setShowCustom(false)} />
       )}
     </div>
   );

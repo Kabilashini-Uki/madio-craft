@@ -6,11 +6,11 @@
 }
 
 :root {
-  --primary: #8B5A2B;
-  --primary-dark: #5D3A1A;
-  --primary-light: #D4A574;
+  --primary: #E29578;
+  --primary-dark: #D17A5C;
+  --primary-light: #F0B49A;
   --secondary: #2C5530;
-  --accent: #C99A6B;
+  --accent: #E29578;
   --background: #FCF8F3;
   --surface: #FFFFFF;
   --text-primary: #2C1810;

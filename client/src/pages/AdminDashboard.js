@@ -1,4 +1,4 @@
-// src/pages/AdminDashboard.js - Complete Admin Panel (Updated)
+// src/pages/AdminDashboard.js - Complete Admin Panel
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,13 +9,15 @@ import {
   FiAward,
   FiGrid, FiList,
   FiStar, FiMessageSquare,
-  FiArrowLeft, FiAlertCircle
+  FiArrowLeft, FiAlertCircle,
+  FiTool
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useNotif } from '../context/NotifContext';
 import { useSocket } from '../context/SocketContext';
 import NotificationBell from '../components/NotificationBell';
+import { SkeletonCard, SkeletonRow, SkeletonTable, SkeletonGrid } from '../components/LoadingSkeleton';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -38,6 +40,7 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [allCustomOrders, setAllCustomOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedModal, setSelectedModal] = useState(null);
   const [actionLoading, setActionLoading] = useState('');
@@ -49,6 +52,8 @@ const AdminDashboard = () => {
   const [artisanDetailTab, setArtisanDetailTab] = useState('profile');
   const [artisanStats, setArtisanStats] = useState(null);
   const [loadingArtisanStats, setLoadingArtisanStats] = useState(false);
+  const [customizationOrders, setCustomizationOrders] = useState([]);
+  const [selectedCustomization, setSelectedCustomization] = useState(null);
 
   // Buyer detail
   const [selectedBuyer, setSelectedBuyer] = useState(null);
@@ -80,16 +85,17 @@ const AdminDashboard = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [statsRes, usersRes, productsRes, ordersRes] = await Promise.allSettled([
+      const [statsRes, usersRes, productsRes, ordersRes, customOrdersRes] = await Promise.allSettled([
         api.get('/admin/stats'),
         api.get('/admin/users'),
         api.get('/admin/products'),
         api.get('/admin/orders'),
+        api.get('/products/customization-requests'),
       ]);
 
       if (statsRes.status === 'fulfilled') {
         const payload = statsRes.value?.data;
-        setStats(payload?.stats || payload || {});
+        setStats(payload?.stats || {});
       } else {
         console.error('Failed to load /admin/stats:', statsRes.reason);
         toast.error('Failed to load admin stats.');
@@ -97,7 +103,8 @@ const AdminDashboard = () => {
 
       if (usersRes.status === 'fulfilled') {
         const payload = usersRes.value?.data;
-        setUsers(payload?.users || payload?.data || (Array.isArray(payload) ? payload : []));
+        const usersData = payload?.users || [];
+        setUsers(Array.isArray(usersData) ? usersData : []);
       } else {
         console.error('Failed to load /admin/users:', usersRes.reason);
         toast.error('Failed to load users.');
@@ -105,7 +112,8 @@ const AdminDashboard = () => {
 
       if (productsRes.status === 'fulfilled') {
         const payload = productsRes.value?.data;
-        setProducts(payload?.products || payload?.data || (Array.isArray(payload) ? payload : []));
+        const productsData = payload?.products || [];
+        setProducts(Array.isArray(productsData) ? productsData : []);
       } else {
         console.error('Failed to load /admin/products:', productsRes.reason);
         toast.error('Failed to load products.');
@@ -113,16 +121,32 @@ const AdminDashboard = () => {
 
       if (ordersRes.status === 'fulfilled') {
         const payload = ordersRes.value?.data;
-        setOrders(payload?.orders || payload?.data || (Array.isArray(payload) ? payload : []));
+        const ordersData = payload?.orders || [];
+        setOrders(Array.isArray(ordersData) ? ordersData : []);
       } else {
         console.error('Failed to load /admin/orders:', ordersRes.reason);
         toast.error('Failed to load orders.');
       }
+
+      if (customOrdersRes && customOrdersRes.status === 'fulfilled') {
+        const requestsData = customOrdersRes.value?.data?.requests || [];
+        setAllCustomOrders(Array.isArray(requestsData) ? requestsData : []);
+      }
     } catch (e) {
-      // This should rarely happen because Promise.allSettled does not throw.
       console.error('Unexpected admin fetch error:', e);
       toast.error('Failed to load admin data. Please refresh.');
     } finally { setLoading(false); }
+  };
+
+  const fetchCustomizationOrders = async (artisanId) => {
+    try {
+      const response = await api.get(`/products/customization-requests?artisan=${artisanId}`);
+      if (response.data.success) {
+        setCustomizationOrders(response.data.requests || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch customization orders:', error);
+    }
   };
 
   const openArtisanDetail = async (artisan) => {
@@ -132,8 +156,12 @@ const AdminDashboard = () => {
     try {
       const res = await api.get(`/admin/artisans/${artisan._id}/stats`);
       setArtisanStats(res.data.stats);
-    } catch (e) { toast.error('Failed to load artisan stats'); }
-    finally { setLoadingArtisanStats(false); }
+      await fetchCustomizationOrders(artisan._id);
+    } catch (e) {
+      toast.error('Failed to load artisan stats');
+    } finally {
+      setLoadingArtisanStats(false);
+    }
   };
 
   const handleVerifyArtisan = async (userId) => {
@@ -177,7 +205,6 @@ const AdminDashboard = () => {
     catch (e) { toast.error('Failed'); }
   };
 
-
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-800', confirmed: 'bg-blue-100 text-blue-800',
     in_production: 'bg-purple-100 text-purple-800', shipped: 'bg-orange-100 text-orange-800',
@@ -190,6 +217,7 @@ const AdminDashboard = () => {
     { id: 'buyers', label: 'Buyers', icon: FiUsers },
     { id: 'artisans', label: 'Artisans', icon: FiAward },
     { id: 'products', label: 'Products', icon: FiPackage },
+    { id: 'custom-orders', label: 'Custom Orders', icon: FiTool },
   ];
 
   if (loading) return (
@@ -200,7 +228,6 @@ const AdminDashboard = () => {
       </div>
     </div>
   );
-
 
   // ─── Artisan Detail View ──────────────────────────────────────────────────
   if (selectedArtisan) {
@@ -215,14 +242,14 @@ const AdminDashboard = () => {
       { id: 'profile', label: 'Profile', icon: FiUsers },
       { id: 'finance', label: 'Monthly Finance', icon: RevenueIcon },
       { id: 'all-orders', label: 'All Orders', icon: FiShoppingBag },
+      { id: 'custom-orders', label: 'Custom Orders', icon: FiTool },
       { id: 'delivered', label: 'Delivered Orders', icon: FiCheckCircle },
       { id: 'cancelled', label: 'Cancelled Orders', icon: FiAlertCircle },
       { id: 'reviews', label: 'Customer Reviews', icon: FiMessageSquare },
-      { id: 'ratings', label: 'Ratings', icon: FiStar },
     ];
 
     return (
-      <div className="min-h-screen bg-amber-50/40 flex">
+      <div className="min-h-screen bg-white flex">
         <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
           <div className="p-4 flex items-center justify-between border-b border-amber-800">
             {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
@@ -317,7 +344,7 @@ const AdminDashboard = () => {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="bg-emerald-50 rounded-xl p-4">
-                          <div className="flex items-center space-x-2 mb-1"><RevenueIcon className="h-4 w-4 text-emerald-600" /><p className="text-xs text-emerald-600 font-medium">Total Revenue (Delivered only)</p></div>
+                          <div className="flex items-center space-x-2 mb-1"><RevenueIcon className="h-4 w-4 text-emerald-600" /><p className="text-xs text-emerald-600 font-medium">Total Revenue (Delivered & Paid)</p></div>
                           <p className="text-xl font-bold text-emerald-800">LKR {artisanStats.revenue?.toLocaleString()}</p>
                         </div>
                         <div className="bg-purple-50 rounded-xl p-4">
@@ -330,7 +357,11 @@ const AdminDashboard = () => {
                           <div className="p-4 border-b"><h3 className="font-semibold text-gray-900">Monthly Breakdown</h3></div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                              <thead className="bg-gray-50"><tr>{['Month', 'Orders', 'Qty', 'Revenue (LKR)', 'Commission (LKR)'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  {['Month', 'Orders', 'Qty', 'Revenue (LKR)', 'Commission (LKR)'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}
+                                </tr>
+                              </thead>
                               <tbody className="divide-y divide-gray-100">
                                 {artisanStats.monthly.map(m => (
                                   <tr key={m.month} className="hover:bg-gray-50">
@@ -358,6 +389,63 @@ const AdminDashboard = () => {
                 </motion.div>
               )}
 
+              {artisanDetailTab === 'custom-orders' && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Customization Orders</h1>
+                  {customizationOrders.length === 0 ? (
+                    <div className="bg-white rounded-2xl shadow-sm p-8 text-center text-gray-400">
+                      <FiTool className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                      <p>No customization orders yet</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request ID</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buyer</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {customizationOrders.map(req => (
+                              <tr key={req._id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm font-mono text-gray-600">{req._id?.slice(-8) || 'N/A'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-900">{req.sender?.name || req.senderName || 'Unknown'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{req.product?.name || req.productName || 'Unknown'}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${req.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                                    req.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                      'bg-yellow-100 text-yellow-700'
+                                    }`}>
+                                    {req.status || 'pending'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm font-bold text-gray-900">
+                                  {req.customizationPrice ? `LKR ${req.customizationPrice.toLocaleString()}` : '-'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <button
+                                    onClick={() => setSelectedCustomization(req)}
+                                    className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100"
+                                  >
+                                    View Details
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
               {artisanDetailTab === 'delivered' && (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
                   <h1 className="text-2xl font-bold text-gray-900 mb-6">Delivered Orders ({deliveredOrders.length})</h1>
@@ -382,13 +470,9 @@ const AdminDashboard = () => {
                           <div key={idx} className="p-4 bg-gray-50 rounded-xl">
                             <div className="flex items-center justify-between mb-2">
                               <p className="font-medium text-gray-900 text-sm">{review.buyer?.name || 'Buyer'}</p>
-                              <div className="flex items-center space-x-1">
-                                {[...Array(5)].map((_, i) => (
-                                  <FiStar key={i} className={`h-3.5 w-3.5 ${i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
-                                ))}
-                              </div>
+                              {review.createdAt && <span className="text-xs text-gray-500">{new Date(review.createdAt).toLocaleDateString()}</span>}
                             </div>
-                            <p className="text-sm text-gray-600">{review.comment}</p>
+                            <p className="text-sm text-gray-600">{review.comment || <i>No comment provided</i>}</p>
                           </div>
                         ))}
                       </div>
@@ -402,36 +486,6 @@ const AdminDashboard = () => {
                 </motion.div>
               )}
 
-              {artisanDetailTab === 'ratings' && (
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Ratings</h1>
-                  <div className="bg-white rounded-2xl shadow-sm p-8 max-w-md">
-                    <div className="text-center py-4 mb-6">
-                      <div className="text-5xl font-bold text-gray-900 mb-2">
-                        {(artisanStats?.averageRating || selectedArtisan.artisanProfile?.rating?.average || 0).toFixed(1)}
-                      </div>
-                      <div className="flex justify-center space-x-1 mb-3">
-                        {[...Array(5)].map((_, i) => (
-                          <FiStar key={i} className={`h-6 w-6 ${i < Math.round(artisanStats?.averageRating || 0) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
-                        ))}
-                      </div>
-                      <p className="text-sm text-gray-500">Based on {artisanStats?.total || 0} orders</p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-amber-50 rounded-xl p-3 text-center">
-                        <p className="text-lg font-bold text-amber-800">{artisanStats?.delivered || 0}</p>
-                        <p className="text-xs text-amber-600">Successful Deliveries</p>
-                      </div>
-                      <div className="bg-green-50 rounded-xl p-3 text-center">
-                        <p className="text-lg font-bold text-green-700">
-                          {artisanStats?.total ? Math.round((artisanStats.delivered / artisanStats.total) * 100) : 0}%
-                        </p>
-                        <p className="text-xs text-green-500">Completion Rate</p>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
             </>
           )}
         </main>
@@ -439,6 +493,9 @@ const AdminDashboard = () => {
         <AnimatePresence>
           {selectedModal && (
             <OrderModal order={selectedModal.data} onClose={() => setSelectedModal(null)} statusColors={statusColors} onUpdateStatus={handleUpdateOrderStatus} onRefund={handleRefund} />
+          )}
+          {selectedCustomization && (
+            <CustomizationModal request={selectedCustomization} onClose={() => setSelectedCustomization(null)} />
           )}
         </AnimatePresence>
       </div>
@@ -452,7 +509,7 @@ const AdminDashboard = () => {
     );
 
     return (
-      <div className="min-h-screen bg-amber-50/40 flex">
+      <div className="min-h-screen bg-white flex">
         <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
           <div className="p-4 flex items-center justify-between border-b border-amber-800">
             {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
@@ -528,10 +585,6 @@ const AdminDashboard = () => {
                     ))}
                   </div>
                 )}
-                <h2 className="text-lg font-bold text-gray-900 mt-6 mb-4">Reviews</h2>
-                <div className="bg-white rounded-2xl shadow-sm p-6 text-center text-gray-400 text-sm">
-                  Reviews submitted by this buyer will appear here.
-                </div>
               </div>
             </div>
           </motion.div>
@@ -542,7 +595,7 @@ const AdminDashboard = () => {
 
   // ─── Main Admin Dashboard ─────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-amber-50/40 flex">
+    <div className="min-h-screen bg-white flex">
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
         <div className="p-4 flex items-center justify-between border-b border-amber-800">
           {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
@@ -597,24 +650,35 @@ const AdminDashboard = () => {
                   <FiRefreshCw className="h-4 w-4" /><span>Refresh</span>
                 </button>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {[
-                  { label: 'Total Users', value: stats.users?.total || 0, sub: `${stats.users?.artisans || 0} artisans, ${stats.users?.buyers || 0} buyers`, icon: FiUsers, color: 'from-blue-500 to-blue-600' },
-                  { label: 'Products', value: stats.products?.total || 0, sub: `${stats.products?.active || 0} active`, icon: FiPackage, color: 'from-purple-500 to-purple-600' },
-                  { label: 'Orders', value: stats.orders?.total || 0, sub: `${stats.orders?.pending || 0} pending`, icon: FiShoppingBag, color: 'from-orange-500 to-orange-600' },
-                  { label: 'Total Revenue', value: `LKR ${((stats.orders?.revenue || 0) / 1000).toFixed(1)}K`, sub: 'Delivered orders only', icon: RevenueIcon, color: 'from-green-500 to-emerald-600' },
-                ].map((s, i) => (
-                  <motion.div key={i} whileHover={{ y: -4 }} className="bg-white rounded-2xl p-6 shadow-sm">
-                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${s.color} flex items-center justify-center mb-4`}><s.icon className="h-6 w-6 text-white" /></div>
-                    <div className="text-3xl font-bold text-gray-900">{s.value}</div>
-                    <div className="text-sm font-medium text-gray-700 mt-1">{s.label}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>
-                  </motion.div>
-                ))}
-              </div>
-              <div className="bg-white rounded-2xl shadow-sm p-6">
+              {loading ? (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                  <SkeletonCard color="blue" height="h-32" />
+                  <SkeletonCard color="purple" height="h-32" />
+                  <SkeletonCard color="orange" height="h-32" />
+                  <SkeletonCard color="green" height="h-32" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                  {[
+                    { label: 'Total Users', value: stats.users?.total || 0, sub: `${stats.users?.artisans || 0} artisans, ${stats.users?.buyers || 0} buyers`, icon: FiUsers, color: 'from-blue-500 to-blue-600' },
+                    { label: 'Products', value: stats.products?.total || 0, sub: `${stats.products?.active || 0} active`, icon: FiPackage, color: 'from-purple-500 to-purple-600' },
+                    { label: 'Orders', value: stats.orders?.total || 0, sub: `${stats.orders?.pending || 0} pending`, icon: FiShoppingBag, color: 'from-orange-500 to-orange-600' },
+                    { label: 'Total Revenue', value: `LKR ${((stats.orders?.revenue || 0) / 1000).toFixed(1)}K`, sub: 'Delivered & Paid orders only', icon: RevenueIcon, color: 'from-green-500 to-emerald-600' },
+                  ].map((s, i) => (
+                    <motion.div key={i} whileHover={{ y: -4 }} className="bg-[#F5EBE0] rounded-2xl p-6 shadow-sm border border-[#D5C4A1]/30">
+                      <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${s.color} flex items-center justify-center mb-4`}><s.icon className="h-6 w-6 text-white" /></div>
+                      <div className="text-3xl font-bold text-gray-900">{s.value}</div>
+                      <div className="text-sm font-medium text-gray-700 mt-1">{s.label}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+              <div className="bg-[#FAF0E6] rounded-2xl shadow-sm p-6 border border-[#D5C4A1]/30">
                 <h2 className="text-lg font-bold text-gray-900 mb-4">Pending Artisan Verification</h2>
-                {users.filter(u => u.role === 'artisan' && !u.isVerified).length === 0 ? (
+                {loading ? (
+                  <SkeletonTable rows={3} color="amber" />
+                ) : users.filter(u => u.role === 'artisan' && !u.isVerified).length === 0 ? (
                   <div className="text-center py-8 text-gray-400"><FiCheckCircle className="h-10 w-10 mx-auto mb-2 text-green-400" /><p className="text-sm">All artisans verified!</p></div>
                 ) : (
                   <div className="space-y-3">
@@ -630,7 +694,7 @@ const AdminDashboard = () => {
             </motion.div>
           )}
 
-          {/* Buyers — each is a clickable button */}
+          {/* Buyers */}
           {activeTab === 'buyers' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <div className="flex justify-between items-center mb-6">
@@ -644,29 +708,33 @@ const AdminDashboard = () => {
                 <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search buyers..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm bg-white" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {users.filter(u => u.role === 'buyer' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
-                  <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => setSelectedBuyer(u)}
-                    className="bg-white rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-amber-200">
-                    <div className="flex items-center space-x-3 mb-3">
-                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-700">{u.name?.[0]}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">{u.name}</p>
-                        <p className="text-xs text-gray-500 truncate">{u.email}</p>
+              {loading ? (
+                <SkeletonGrid count={6} color="blue" />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {users.filter(u => u.role === 'buyer' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
+                    <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => setSelectedBuyer(u)}
+                      className="bg-[#F5EBE0] rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-[#D5C4A1]/30 hover:border-amber-200">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-700">{u.name?.[0]}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">{u.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                        </div>
+                        <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
                       </div>
-                      <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
-                      <span className="text-xs text-gray-400">{orders.filter(o => (o.buyer?._id || o.buyer?.id) === u._id).length} orders</span>
-                    </div>
-                  </motion.button>
-                ))}
-              </div>
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
+                        <span className="text-xs text-gray-400">{orders.filter(o => (o.buyer?._id || o.buyer?.id) === u._id).length} orders</span>
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+              )}
             </motion.div>
           )}
 
-          {/* Artisans — each is a clickable button */}
+          {/* Artisans */}
           {activeTab === 'artisans' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <div className="flex justify-between items-center mb-6">
@@ -680,37 +748,41 @@ const AdminDashboard = () => {
                 <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search artisans..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm bg-white" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {users.filter(u => u.role === 'artisan' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
-                  <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => openArtisanDetail(u)}
-                    className="bg-white rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-transparent hover:border-amber-100">
-                    <div className="flex items-center space-x-3 mb-3">
-                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-600">{u.name?.[0]}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">{u.name}</p>
-                        <p className="text-xs text-gray-500 truncate">{u.artisanProfile?.businessName || u.email}</p>
-                      </div>
-                      <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                    </div>
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isVerified ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{u.isVerified ? '✓ Verified' : 'Pending'}</span>
-                    </div>
-                    {u.artisanProfile?.stats && (
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <div className="bg-gray-50 p-2 rounded-lg text-center">
-                          <p className="text-[10px] text-gray-500 uppercase">Revenue</p>
-                          <p className="text-xs font-bold text-gray-900">LKR {(u.artisanProfile.stats.totalRevenue || 0).toLocaleString()}</p>
+              {loading ? (
+                <SkeletonGrid count={6} color="purple" />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {users.filter(u => u.role === 'artisan' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
+                    <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => openArtisanDetail(u)}
+                      className="bg-[#F5EBE0] rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-[#D5C4A1]/30 hover:border-amber-100">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-600">{u.name?.[0]}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">{u.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{u.artisanProfile?.businessName || u.email}</p>
                         </div>
-                        <div className="bg-gray-50 p-2 rounded-lg text-center">
-                          <p className="text-[10px] text-gray-500 uppercase">Orders</p>
-                          <p className="text-xs font-bold text-gray-900">{u.artisanProfile.stats.totalOrders || 0}</p>
-                        </div>
+                        <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
                       </div>
-                    )}
-                  </motion.button>
-                ))}
-              </div>
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isVerified ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>{u.isVerified ? '✓ Verified' : 'Pending'}</span>
+                      </div>
+                      {u.artisanProfile?.stats && (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div className="bg-gray-50 p-2 rounded-lg text-center">
+                            <p className="text-[10px] text-gray-500 uppercase">Revenue</p>
+                            <p className="text-xs font-bold text-gray-900">LKR {(u.artisanProfile.stats.totalRevenue || 0).toLocaleString()}</p>
+                          </div>
+                          <div className="bg-gray-50 p-2 rounded-lg text-center">
+                            <p className="text-[10px] text-gray-500 uppercase">Orders</p>
+                            <p className="text-xs font-bold text-gray-900">{u.artisanProfile.stats.totalOrders || 0}</p>
+                          </div>
+                        </div>
+                      )}
+                    </motion.button>
+                  ))}
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -722,27 +794,100 @@ const AdminDashboard = () => {
                 <div className="p-4 border-b">
                   <div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search products..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm" /></div>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50"><tr>{['Product', 'Artisan', 'Category', 'Price', 'Stock', 'Status', 'Actions'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {products.filter(p => !searchTerm || p.name?.toLowerCase().includes(searchTerm.toLowerCase())).map(product => (
-                        <tr key={product._id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3"><div className="flex items-center space-x-3"><img src={product.images?.[0]?.url || 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=50'} className="w-10 h-10 rounded-lg object-cover" alt="" /><p className="font-medium text-sm text-gray-900 max-w-[150px] truncate">{product.name}</p></div></td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{product.artisan?.name || 'N/A'}</td>
-                          <td className="px-4 py-3"><span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs capitalize">{product.category}</span></td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">LKR {product.price?.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{product.stock}</td>
-                          <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${product.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{product.isActive ? 'Active' : 'Inactive'}</span></td>
-                          <td className="px-4 py-3"><div className="flex items-center space-x-2">
-                            <button onClick={() => handleToggleProduct(product._id, product.isActive)} className={`px-3 py-1 text-xs rounded-lg font-medium ${product.isActive ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>{product.isActive ? 'Deactivate' : 'Activate'}</button>
-                            <button onClick={() => handleDeleteProduct(product._id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><FiTrash2 className="h-3.5 w-3.5" /></button>
-                          </div></td>
+                {loading ? (
+                  <div className="p-6">
+                    <SkeletonTable rows={5} color="green" />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          {['Product', 'Artisan', 'Category', 'Price', 'Stock', 'Status', 'Actions'].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {products.filter(p => !searchTerm || p.name?.toLowerCase().includes(searchTerm.toLowerCase())).map(product => (
+                          <tr key={product._id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3"><div className="flex items-center space-x-3"><img src={product.images?.[0]?.url || 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=50'} className="w-10 h-10 rounded-lg object-cover" alt="" /><p className="font-medium text-sm text-gray-900 max-w-[150px] truncate">{product.name}</p></div></td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{product.artisan?.name || 'N/A'}</td>
+                            <td className="px-4 py-3"><span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs capitalize">{product.category}</span></td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">LKR {product.price?.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{product.stock}</td>
+                            <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${product.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{product.isActive ? 'Active' : 'Inactive'}</span></td>
+                            <td className="px-4 py-3"><div className="flex items-center space-x-2">
+                              <button onClick={() => handleToggleProduct(product._id, product.isActive)} className={`px-3 py-1 text-xs rounded-lg font-medium ${product.isActive ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>{product.isActive ? 'Deactivate' : 'Activate'}</button>
+                              <button onClick={() => handleDeleteProduct(product._id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><FiTrash2 className="h-3.5 w-3.5" /></button>
+                            </div></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Global Custom Orders */}
+          {activeTab === 'custom-orders' && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <h1 className="text-2xl font-bold text-gray-900 mb-6">Global Custom Orders</h1>
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b">
+                  <div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search requests..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm" /></div>
                 </div>
+                {loading ? (
+                  <div className="p-6">
+                    <SkeletonTable rows={5} color="purple" />
+                  </div>
+                ) : allCustomOrders.length === 0 ? (
+                  <div className="bg-white rounded-2xl shadow-sm p-8 text-center text-gray-400">
+                    <FiTool className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p>No customization orders found in the platform</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request ID</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buyer</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artisan</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {allCustomOrders.filter(o => !searchTerm || o.senderName?.toLowerCase().includes(searchTerm.toLowerCase()) || o.productName?.toLowerCase().includes(searchTerm.toLowerCase())).map(req => (
+                          <tr key={req._id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-mono text-gray-600">{req._id?.slice(-8) || 'N/A'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{req.sender?.name || req.senderName || 'Unknown'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{req.artisan?.name || 'Unknown'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{req.product?.name || req.productName || 'Unknown'}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${req.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                                req.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                  'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                {req.status || 'pending'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <button
+                                onClick={() => setSelectedCustomization(req)}
+                                className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100"
+                              >
+                                View Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -770,7 +915,11 @@ const OrderTable = ({ orders, statusColors, onViewOrder }) => {
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50"><tr>{['Order ID', 'Buyer', 'Amount', 'Status', 'Date', ''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}</tr></thead>
+          <thead className="bg-gray-50">
+            <tr>
+              {['Order ID', 'Buyer', 'Amount', 'Status', 'Date', ''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>)}
+            </tr>
+          </thead>
           <tbody className="divide-y divide-gray-100">
             {orders.map(order => (
               <tr key={order._id} className="hover:bg-gray-50">
@@ -799,9 +948,24 @@ const OrderModal = ({ order, onClose, statusColors, onUpdateStatus, onRefund }) 
       </div>
       <div className="p-6 space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          {[['Order ID', order.orderId], ['Amount', `LKR ${order.totalAmount?.toLocaleString()}`], ['Buyer', order.buyer?.name], ['Artisan', order.artisan?.name], ['Status', order.orderStatus?.replace(/_/g, ' ')], ['Payment', order.paymentStatus], ['Date', new Date(order.createdAt).toLocaleString()]].map(([k, v]) => (
+          {[
+            ['Order ID', order.orderId],
+            ['Amount', `LKR ${order.totalAmount?.toLocaleString()}`],
+            ['Buyer', order.buyer?.name],
+            ['Artisan', order.artisan?.name],
+            ['Status', order.orderStatus?.replace(/_/g, ' ')],
+            ['Payment', order.paymentStatus],
+            ['Date', new Date(order.createdAt).toLocaleString()]
+          ].map(([k, v]) => (
             <div key={k}><p className="text-xs text-gray-500">{k}</p><p className="font-medium text-gray-900 text-sm">{v}</p></div>
           ))}
+          {order.isCustomized && (
+            <div className="col-span-2">
+              <span className="inline-flex items-center space-x-1 px-3 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                ✨ Customized Product Order
+              </span>
+            </div>
+          )}
         </div>
         <div className="border-t pt-4">
           <p className="text-xs font-medium text-gray-600 mb-3 uppercase tracking-wider">Order Items</p>
@@ -827,6 +991,71 @@ const OrderModal = ({ order, onClose, statusColors, onUpdateStatus, onRefund }) 
         </div>
         {order.paymentStatus !== 'refunded' && (
           <button onClick={() => { onRefund(order._id); onClose(); }} className="w-full py-2.5 bg-red-50 text-red-600 text-sm rounded-xl hover:bg-red-100">Process Refund</button>
+        )}
+      </div>
+    </motion.div>
+  </motion.div>
+);
+
+// ── Customization Modal ──────────────────────────────────────────────────────
+const CustomizationModal = ({ request, onClose }) => (
+  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+    <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+      <div className="p-6 border-b flex justify-between items-center sticky top-0 bg-white rounded-t-2xl">
+        <h2 className="text-lg font-bold text-gray-900">Customization Details</h2>
+        <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><FiX /></button>
+      </div>
+      <div className="p-6 space-y-4">
+        <div>
+          <p className="text-xs text-gray-500">Buyer</p>
+          <p className="font-medium text-gray-900">{request.sender?.name || request.senderName}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500">Product</p>
+          <p className="font-medium text-gray-900">{request.product?.name || request.productName}</p>
+        </div>
+        {request.color && (
+          <div>
+            <p className="text-xs text-gray-500">Color</p>
+            <p className="font-medium text-gray-900">{request.color}</p>
+          </div>
+        )}
+        {request.size && (
+          <div>
+            <p className="text-xs text-gray-500">Size</p>
+            <p className="font-medium text-gray-900">{request.size}</p>
+          </div>
+        )}
+        {request.notes && (
+          <div>
+            <p className="text-xs text-gray-500">Notes</p>
+            <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-xl">{request.notes}</p>
+          </div>
+        )}
+        {request.customizationPrice && (
+          <div>
+            <p className="text-xs text-gray-500">Customization Price</p>
+            <p className="text-lg font-bold text-green-700">LKR {request.customizationPrice.toLocaleString()}</p>
+          </div>
+        )}
+        <div>
+          <p className="text-xs text-gray-500">Status</p>
+          <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mt-1 ${request.status === 'accepted' ? 'bg-green-100 text-green-700' :
+            request.status === 'rejected' ? 'bg-red-100 text-red-700' :
+              'bg-yellow-100 text-yellow-700'
+            }`}>
+            {request.status || 'pending'}
+          </span>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500">Requested On</p>
+          <p className="text-sm text-gray-600">{new Date(request.timestamp).toLocaleString()}</p>
+        </div>
+        {request.respondedAt && (
+          <div>
+            <p className="text-xs text-gray-500">Responded On</p>
+            <p className="text-sm text-gray-600">{new Date(request.respondedAt).toLocaleString()}</p>
+          </div>
         )}
       </div>
     </motion.div>

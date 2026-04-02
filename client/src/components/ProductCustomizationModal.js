@@ -38,8 +38,7 @@ const ProductCustomizationModal = ({ product, onClose }) => {
   const { user } = useAuth();
 
   // Effective role: respects buyer-mode switching
-  const effectiveRole = user?.activeRole || user?.role;
-  const canSendRequest = effectiveRole === 'buyer' || effectiveRole === 'admin' || !user;
+  const canSendRequest = !!user; // Any logged in user
   const isOwnProduct = user && (
     String(user.id || user._id) === String(product.artisan?._id || product.artisan)
   );
@@ -59,7 +58,6 @@ const ProductCustomizationModal = ({ product, onClose }) => {
   const handleSend = useCallback(async () => {
     if (!user) { toast.error('Please login to send customisation requests'); return; }
     if (isOwnProduct) { toast.error("You can't customise your own product", { icon: '🚫' }); onClose(); return; }
-    if (!canSendRequest) { toast.error('Switch to buyer mode to send customisation requests'); onClose(); return; }
     if (!hasAny) { toast.error('Pick at least one option — colour, size, or notes'); return; }
     setStatus('sending');
 

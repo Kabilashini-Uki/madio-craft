@@ -1,7 +1,7 @@
 // src/pages/Products.js
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+
 import { FiFilter, FiX, FiGrid, FiList } from 'react-icons/fi';
 import api from '../services/api';
 import ProductCard from '../components/ProductCard';
@@ -15,8 +15,7 @@ const Products = () => {
   const [filters, setFilters] = useState({
     category: '',
     priceRange: '',
-    sort: 'newest',
-    minRating: ''
+    sort: 'newest'
   });
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
@@ -27,6 +26,61 @@ const Products = () => {
   const [categories, setCategories] = useState([]);
 
   useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await api.get('/products/categories');
+        setCategories(res.data.categories || []);
+      } catch (err) {
+        console.error('Failed to load categories', err);
+        setCategories([]);
+      }
+    };
+
+    const fetchProducts = async () => {
+      setLoading(true);
+      try {
+        const params = { limit: 100 };
+        if (searchQuery) params.search = searchQuery;
+        if (filters.category) params.category = filters.category;
+
+        const response = await api.get('/products', { params });
+        
+        // Handle different response structures
+        let prods = [];
+        if (response.data.success && response.data.products) {
+          prods = response.data.products;
+        } else if (Array.isArray(response.data)) {
+          prods = response.data;
+        } else if (response.data.products) {
+          prods = response.data.products;
+        }
+
+        // Filter out any null or invalid products
+        prods = prods.filter(p => p && p._id && p.name);
+
+        // Client-side price filter
+        if (filters.priceRange) {
+          const [min, max] = filters.priceRange.split('-').map(Number);
+          prods = prods.filter(p =>
+            p.price >= min && (max === Infinity ? true : p.price <= max)
+          );
+        }
+
+        // Sorting
+        if (filters.sort === '-price') prods.sort((a, b) => b.price - a.price);
+        else if (filters.sort === 'price') prods.sort((a, b) => a.price - b.price);
+        else if (filters.sort === 'newest') prods.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        setAllProducts(prods);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+        setAllProducts([]);
+        // Don't show error toast on initial load, just log it
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchProducts();
     fetchCategories();
   }, [filters, searchQuery]);
@@ -35,47 +89,7 @@ const Products = () => {
     setCurrentPage(1);
   }, [filters, searchQuery]);
 
-  const fetchCategories = async () => {
-    try {
-      const res = await api.get('/products/categories');
-      setCategories(res.data.categories || []);
-    } catch (err) {
-      console.error('Failed to load categories', err);
-    }
-  };
 
-  const fetchProducts = async () => {
-    setLoading(true);
-    try {
-      const params = { limit: 100 };
-      if (searchQuery) params.search = searchQuery;
-      if (filters.category) params.category = filters.category;
-      if (filters.minRating) params.minRating = filters.minRating;
-
-      const response = await api.get('/products', { params });
-      let prods = response.data.products || response.data || [];
-
-      // Client-side price filter
-      if (filters.priceRange) {
-        const [min, max] = filters.priceRange.split('-').map(Number);
-        prods = prods.filter(p => 
-          p.price >= min && (max === Infinity ? true : p.price <= max)
-        );
-      }
-
-      // Sorting
-      if (filters.sort === '-price') prods.sort((a, b) => b.price - a.price);
-      else if (filters.sort === 'price') prods.sort((a, b) => a.price - b.price);
-      else if (filters.sort === '-rating') prods.sort((a, b) => (b.ratings?.average || 0) - (a.ratings?.average || 0));
-      else if (filters.sort === 'newest') prods.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-      setAllProducts(prods);
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const priceRanges = [
     { id: '0-999', label: 'Under Rs 1,000' },
@@ -85,11 +99,7 @@ const Products = () => {
     { id: '10000-999999', label: 'Rs 10,000 & Above' },
   ];
 
-  const ratingOptions = [
-    { value: '4', label: '4★ & above' },
-    { value: '3', label: '3★ & above' },
-    { value: '2', label: '2★ & above' },
-  ];
+
 
   const totalPages = Math.ceil(allProducts.length / PRODUCTS_PER_PAGE);
   const paginatedProducts = allProducts.slice(
@@ -98,7 +108,7 @@ const Products = () => {
   );
 
   const clearFilters = () => {
-    setFilters({ category: '', priceRange: '', sort: 'newest', minRating: '' });
+    setFilters({ category: '', priceRange: '', sort: 'newest' });
     setSearchParams({});
   };
 
@@ -143,21 +153,7 @@ const Products = () => {
         </div>
       </div>
 
-      {/* Rating */}
-      <div>
-        <h3 className="font-medium text-gray-900 mb-4">Rating</h3>
-        <div className="space-y-3">
-          {ratingOptions.map(opt => (
-            <label key={opt.value} className="flex items-center space-x-3 cursor-pointer">
-              <input type="radio" name="minRating" value={opt.value}
-                checked={filters.minRating === opt.value}
-                onChange={(e) => setFilters({ ...filters, minRating: e.target.value })}
-                className="w-4 h-4 text-amber-700" />
-              <span className="text-gray-700">{opt.label}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+
 
       {/* Sort */}
       <div>
@@ -168,12 +164,11 @@ const Products = () => {
           <option value="newest">Newest First</option>
           <option value="-price">Price: High to Low</option>
           <option value="price">Price: Low to High</option>
-          <option value="-rating">Top Rated</option>
         </select>
       </div>
 
       {/* Clear Filters */}
-      {(filters.category || filters.priceRange || filters.minRating) && (
+      {(filters.category || filters.priceRange) && (
         <button onClick={clearFilters}
           className="text-sm text-amber-700 hover:underline">
           Clear all filters
@@ -257,11 +252,10 @@ const Products = () => {
                 </button>
               </div>
             ) : (
-              <div className={`grid ${
-                viewMode === 'grid' 
-                  ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6' 
-                  : 'grid-cols-1 gap-4'
-              }`}>
+              <div className={`grid ${viewMode === 'grid'
+                ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6'
+                : 'grid-cols-1 gap-4'
+                }`} style={{ filter: 'drop-shadow(0 10px 15px rgba(0,0,0,0.05))' }}>
                 {paginatedProducts.map((product, index) => (
                   <ProductCard key={product._id} product={product} viewMode={viewMode} index={index} />
                 ))}
@@ -271,7 +265,7 @@ const Products = () => {
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex justify-center mt-12 space-x-2">
-                <button onClick={() => setCurrentPage(p => Math.max(1, p-1))}
+                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   className="px-4 py-2 bg-white rounded-lg disabled:opacity-50">
                   Previous
@@ -279,7 +273,7 @@ const Products = () => {
                 <span className="px-4 py-2 bg-amber-700 text-white rounded-lg">
                   {currentPage} / {totalPages}
                 </span>
-                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))}
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                   className="px-4 py-2 bg-white rounded-lg disabled:opacity-50">
                   Next

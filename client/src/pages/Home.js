@@ -2,8 +2,319 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { FiShoppingCart, FiEdit3, FiShoppingBag } from 'react-icons/fi';
+import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import api from '../services/api';
-import ProductCard from '../components/ProductCard';
+import toast from 'react-hot-toast';
+
+// Simple Product Card for Home Page - Only shows essentials
+const SimpleProductCard = ({ product, index }) => {
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+  const { addToCart } = useCart();
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [buyingNow, setBuyingNow] = useState(false);
+
+  const isOwnProduct = isAuthenticated && user && (
+    String(user?.id || user?._id) === String(product.artisan?._id || product.artisan)
+  );
+
+  const handleAddToCart = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!isAuthenticated) {
+      toast.error('Please login to add items to cart');
+      navigate('/login');
+      return;
+    }
+    if (isOwnProduct) {
+      toast.error("You can't order your own product");
+      return;
+    }
+    if (user?.role === 'admin') {
+      toast.error('Admins cannot place orders');
+      return;
+    }
+    
+    setAddingToCart(true);
+    try {
+      const success = await addToCart(product, null, 1);
+      if (success !== false) {
+        toast.success('Added to cart!');
+      }
+    } catch (error) {
+      console.error('Add to cart error:', error);
+    } finally {
+      setAddingToCart(false);
+    }
+  };
+
+  const handleBuyNow = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!isAuthenticated) {
+      toast.error('Please login to continue');
+      navigate('/login');
+      return;
+    }
+    if (isOwnProduct) {
+      toast.error("You can't order your own product");
+      return;
+    }
+    if (user?.role === 'admin') {
+      toast.error('Admins cannot place orders');
+      return;
+    }
+    
+    setBuyingNow(true);
+    try {
+      const success = await addToCart(product, null, 1);
+      if (success !== false) {
+        navigate('/checkout?productId=' + product._id);
+      }
+    } catch (error) {
+      console.error('Buy now error:', error);
+    } finally {
+      setBuyingNow(false);
+    }
+  };
+
+  const handleCustomize = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!isAuthenticated) {
+      toast.error('Please login to customize');
+      navigate('/login');
+      return;
+    }
+    if (isOwnProduct) {
+      toast.error("You can't customize your own product");
+      return;
+    }
+    if (user?.role === 'admin') {
+      toast.error('Admins cannot customize products');
+      return;
+    }
+    
+    // Navigate to product page with customization modal open
+    navigate(`/products/${product._id}?customize=true`);
+  };
+
+  const handleCardClick = () => {
+    navigate(`/products/${product._id}`);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.1 }}
+      onClick={handleCardClick}
+      style={{
+        background: 'white',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+        cursor: 'pointer',
+        transition: 'all 0.3s',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-8px)';
+        e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.15)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+      }}
+    >
+      {/* Product Image */}
+      <div style={{ position: 'relative', height: '280px', overflow: 'hidden' }}>
+        <img
+          src={product.images?.[0]?.url || 'https://via.placeholder.com/300'}
+          alt={product.name}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+      </div>
+
+      {/* Product Info */}
+      <div style={{ padding: '20px' }}>
+        <h3 style={{
+          fontSize: '1.125rem',
+          fontWeight: 600,
+          color: '#111827',
+          marginBottom: '8px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {product.name}
+        </h3>
+
+        {/* Artisan Name */}
+        <p style={{
+          fontSize: '0.875rem',
+          color: '#9ca3af',
+          marginBottom: '8px',
+          cursor: 'pointer',
+          textDecoration: 'none',
+          transition: 'color 0.2s',
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          navigate(`/artisans/${product.artisan?._id || product.artisan}`);
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.color = '#E29578'}
+        onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+        >
+          by {product.artisan?.name || 'Unknown Artisan'}
+        </p>
+
+        <p style={{
+          fontSize: '1.5rem',
+          fontWeight: 700,
+          color: '#E29578',
+          marginBottom: '12px',
+        }}>
+          Rs. {product.price?.toLocaleString()}
+        </p>
+
+        {/* Short Description */}
+        <p style={{
+          fontSize: '0.875rem',
+          color: '#6b7280',
+          marginBottom: '16px',
+          lineHeight: '1.4',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          minHeight: '2.8em',
+        }}>
+          {product.description || product.shortDescription || 'Handcrafted with care and attention to detail'}
+        </p>
+
+        {/* Icon Buttons */}
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+          {/* Add to Cart Icon */}
+          <button
+            onClick={handleAddToCart}
+            disabled={addingToCart || isOwnProduct}
+            title="Add to Cart"
+            style={{
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: isOwnProduct ? '#e5e7eb' : '#E29578',
+              color: isOwnProduct ? '#9ca3af' : 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: isOwnProduct ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
+              pointerEvents: 'auto',
+            }}
+            onMouseEnter={(e) => {
+              if (!isOwnProduct && !addingToCart) {
+                e.currentTarget.style.background = '#D17A5C';
+                e.currentTarget.style.transform = 'scale(1.1)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isOwnProduct) {
+                e.currentTarget.style.background = '#E29578';
+                e.currentTarget.style.transform = 'scale(1)';
+              }
+            }}
+          >
+            {addingToCart ? '...' : <FiShoppingCart size={18} />}
+          </button>
+
+          {/* Customization Icon */}
+          <button
+            onClick={handleCustomize}
+            disabled={isOwnProduct}
+            title="Customize Product"
+            style={{
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: isOwnProduct ? '#e5e7eb' : 'white',
+              color: isOwnProduct ? '#9ca3af' : '#E29578',
+              border: `2px solid ${isOwnProduct ? '#e5e7eb' : '#E29578'}`,
+              borderRadius: '8px',
+              cursor: isOwnProduct ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
+              pointerEvents: 'auto',
+            }}
+            onMouseEnter={(e) => {
+              if (!isOwnProduct) {
+                e.currentTarget.style.background = '#E29578';
+                e.currentTarget.style.color = 'white';
+                e.currentTarget.style.transform = 'scale(1.1)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isOwnProduct) {
+                e.currentTarget.style.background = 'white';
+                e.currentTarget.style.color = '#E29578';
+                e.currentTarget.style.transform = 'scale(1)';
+              }
+            }}
+          >
+            <FiEdit3 size={18} />
+          </button>
+
+          {/* Buy Now Icon */}
+          <button
+            onClick={handleBuyNow}
+            disabled={buyingNow || isOwnProduct}
+            title="Buy Now"
+            style={{
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: isOwnProduct ? '#e5e7eb' : '#111827',
+              color: isOwnProduct ? '#9ca3af' : 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: isOwnProduct ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
+              pointerEvents: 'auto',
+            }}
+            onMouseEnter={(e) => {
+              if (!isOwnProduct && !buyingNow) {
+                e.currentTarget.style.background = '#374151';
+                e.currentTarget.style.transform = 'scale(1.1)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isOwnProduct) {
+                e.currentTarget.style.background = '#111827';
+                e.currentTarget.style.transform = 'scale(1)';
+              }
+            }}
+          >
+            {buyingNow ? '...' : <FiShoppingBag size={18} />}
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
 
 // Inline styles
 const styles = {
@@ -95,7 +406,7 @@ const styles = {
     transition: 'transform 0.2s',
   },
   section: {
-    padding: '96px 0',
+    padding: '80px 0',
   },
   sectionHeader: {
     textAlign: 'center',
@@ -155,11 +466,13 @@ const styles = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
     gap: '32px',
     marginTop: '48px',
+    filter: 'drop-shadow(0 10px 15px rgba(0,0,0,0.05))',
   },
   categoriesGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-    gap: '24px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '32px',
+    filter: 'drop-shadow(0 10px 15px rgba(0,0,0,0.05))',
   },
   categoryCard: {
     position: 'relative',
@@ -244,26 +557,30 @@ const Home = () => {
     try {
       setLoading(true);
 
-      // Fetch products
-      const productsRes = await api.get('/products?limit=6&sort=-createdAt');
-      setProducts(productsRes.data.products || []);
+      // Fetch latest 4 products for Trending Treasures
+      const productsRes = await api.get('/products?limit=4&sort=-createdAt');
+      const fetchedProducts = productsRes.data?.products || [];
+      
+      // Filter out any null or invalid products
+      const validProducts = fetchedProducts.filter(p => p && p._id && p.name && p.images);
+      setProducts(validProducts);
 
       // Fetch categories from products
       const allProductsRes = await api.get('/products?limit=100');
-      const allProducts = allProductsRes.data.products || [];
+      const allProducts = allProductsRes.data?.products || [];
 
       // Extract unique categories with images
       const categoryMap = new Map();
       allProducts.forEach(product => {
-        if (product.category && !categoryMap.has(product.category)) {
+        if (product && product.category && !categoryMap.has(product.category)) {
           categoryMap.set(product.category, {
             name: product.category,
             image: product.images?.[0]?.url || 'https://images.unsplash.com/photo-1565193564382-fb8bb0b9e5b4?w=400',
             count: 1
           });
-        } else if (product.category) {
+        } else if (product && product.category) {
           const existing = categoryMap.get(product.category);
-          existing.count += 1;
+          if (existing) existing.count += 1;
         }
       });
 
@@ -271,6 +588,8 @@ const Home = () => {
 
     } catch (error) {
       console.error('Error fetching data:', error);
+      setProducts([]);
+      setCategories([]);
     } finally {
       setLoading(false);
     }
@@ -279,7 +598,6 @@ const Home = () => {
   const features = [
     { icon: '🏆', title: 'Authentic Craftsmanship', description: 'Every piece is handcrafted by skilled artisans' },
     { icon: '🛡️', title: 'Secure Payments', description: '100% secure transactions with Razorpay' },
-    { icon: '🚚', title: 'Free Shipping', description: 'Free shipping on orders above Rs. 999' },
     { icon: '❤️', title: 'Support Artisans', description: 'Directly support traditional crafts' }
   ];
 
@@ -383,7 +701,7 @@ const Home = () => {
       <section style={{ ...styles.section, background: '#f9fafb' }}>
         <div style={styles.container}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '64px' }}>
-            <div>
+            <div style={styles.sectionHeader}>
               <div style={styles.sectionSubtitle}>Featured Collection</div>
               <h2 style={styles.sectionTitle}>Trending Treasures</h2>
             </div>
@@ -411,7 +729,7 @@ const Home = () => {
           ) : (
             <div style={styles.productsGrid}>
               {products.map((product, index) => (
-                <ProductCard key={product._id} product={product} index={index} />
+                <SimpleProductCard key={product._id} product={product} index={index} />
               ))}
             </div>
           )}

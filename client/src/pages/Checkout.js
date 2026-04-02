@@ -4,31 +4,27 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FiMapPin, FiCheckCircle, FiArrowLeft,
-  FiTruck, FiShield, FiPackage, FiLock,
-  FiUser, FiPhone, FiMail, FiHome
+  FiTruck, FiLock
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
-// Delivery locations
-const DELIVERY_LOCATIONS = [
-  'Eravur', 'Marudhamunai', 'Valaichenai', 'Ottamavadi', 'Kaatankudy'
-];
+
 
 const SimpleCheckout = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { cartItems, cartSummary, clearCart } = useCart();
+  const { cartItems, cartSummary, clearCart, refreshCart } = useCart();
 
-  // Block artisans and admins from placing orders — unless they're in buyer mode
+  // Block admins from placing orders (artisans can order from other shops).
   useEffect(() => {
-    const effectiveRole = user?.activeRole || user?.role;
-    if (user && (user.role === 'artisan' || user.role === 'admin') && effectiveRole !== 'buyer') {
-      toast.error('Switch to buyer mode to place orders.');
+    if (user && user.role === 'admin') {
+      toast.error('Admins cannot place orders.');
       navigate('/');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const [step, setStep] = useState(1);
@@ -36,7 +32,7 @@ const SimpleCheckout = () => {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [checkoutItems, setCheckoutItems] = useState([]);
-  const [checkoutSummary, setCheckoutSummary] = useState({ subtotal: 0, shipping: 0, total: 0 });
+  const [checkoutSummary, setCheckoutSummary] = useState({ subtotal: 0, total: 0 });
   const [isBuyNow, setIsBuyNow] = useState(false);
 
   // Load checkout items (either from cart or a specific product for "Buy Now")
@@ -60,8 +56,7 @@ const SimpleCheckout = () => {
 
           setCheckoutItems([buyNowItem]);
           const subtotal = product.price;
-          const shipping = subtotal > 999 ? 0 : 99;
-          setCheckoutSummary({ subtotal, shipping, total: subtotal + shipping });
+          setCheckoutSummary({ subtotal, total: subtotal });
           setIsBuyNow(true);
         } catch (err) {
           console.error('Failed to load buy now product:', err);
@@ -75,7 +70,6 @@ const SimpleCheckout = () => {
           setCheckoutItems(cartItems);
           setCheckoutSummary({
             subtotal: cartSummary.subtotal,
-            shipping: cartSummary.shipping,
             total: cartSummary.total
           });
           setIsBuyNow(false);
@@ -145,7 +139,6 @@ const SimpleCheckout = () => {
         shippingAddress,
         paymentMethod: 'cod',
         subtotal: checkoutSummary.subtotal,
-        shippingCost: checkoutSummary.shipping,
         tax: 0,
         totalAmount: checkoutSummary.total,
       };
@@ -157,7 +150,11 @@ const SimpleCheckout = () => {
       if (response.data.success) {
         setOrderId(response.data.order.orderId || response.data.order._id);
         setOrderPlaced(true);
-        clearCart();
+        if (isBuyNow) {
+          await refreshCart();
+        } else {
+          await clearCart();
+        }
         toast.success('Order placed successfully!');
       }
     } catch (error) {
@@ -401,12 +398,7 @@ const SimpleCheckout = () => {
                   <span className="text-gray-600">Subtotal</span>
                   <span className="font-medium">Rs. {Math.round(checkoutSummary.subtotal || 0).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Shipping</span>
-                  <span className="font-medium">
-                    {checkoutSummary.shipping === 0 ? 'Free' : `Rs. ${checkoutSummary.shipping}`}
-                  </span>
-                </div>
+
                 <div className="border-t pt-2 mt-2">
                   <div className="flex justify-between font-bold text-lg">
                     <span>Total</span>

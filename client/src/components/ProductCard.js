@@ -277,11 +277,11 @@ const styles = {
 
 const PaletteIcon = () => (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.56-.2-1.08-.53-1.47a.75.75 0 01.53-1.28H16c3.31 0 6-2.69 6-6C22 6.48 17.52 2 12 2z"/>
-    <circle cx="7" cy="12" r="1.5" fill="currentColor"/>
-    <circle cx="9.5" cy="7.5" r="1.5" fill="currentColor"/>
-    <circle cx="14.5" cy="7.5" r="1.5" fill="currentColor"/>
-    <circle cx="17" cy="12" r="1.5" fill="currentColor"/>
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.56-.2-1.08-.53-1.47a.75.75 0 01.53-1.28H16c3.31 0 6-2.69 6-6C22 6.48 17.52 2 12 2z" />
+    <circle cx="7" cy="12" r="1.5" fill="currentColor" />
+    <circle cx="9.5" cy="7.5" r="1.5" fill="currentColor" />
+    <circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" />
+    <circle cx="17" cy="12" r="1.5" fill="currentColor" />
   </svg>
 );
 
@@ -297,12 +297,16 @@ const ProductCard = ({ product, index = 0 }) => {
   const { isAuthenticated, user } = useAuth();
   const { isCustomizationApproved } = useNotif();
 
+  // Safety check for null/invalid product - AFTER all hooks
+  if (!product || !product._id) {
+    return null;
+  }
+
   const inWishlist = isInWishlist(product._id);
-  const effectiveRole = user?.activeRole || user?.role;
-  const canOrder = isAuthenticated && effectiveRole === 'buyer';
   const isOwnProduct = isAuthenticated && (
     String(user?.id || user?._id) === String(product.artisan?._id || product.artisan)
   );
+  const canOrder = isAuthenticated && !isOwnProduct;
   const custApproved = isCustomizationApproved(product._id);
   const artisanLoc = product.artisan?.location || '';
 
@@ -311,7 +315,7 @@ const ProductCard = ({ product, index = 0 }) => {
     e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please login'); navigate('/login'); return; }
     if (isOwnProduct) { toast.error("You can't order your own product", { icon: '🚫' }); return; }
-    if (!canOrder) { toast.error('Switch to buyer mode to place orders'); return; }
+    if (!canOrder) { toast.error('You cannot order your own product'); return; }
     setAddingToCart(true);
     await addToCart(product, null, 1);
     setAddingToCart(false);
@@ -322,7 +326,7 @@ const ProductCard = ({ product, index = 0 }) => {
     e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please login'); navigate('/login'); return; }
     if (isOwnProduct) { toast.error("You can't order your own product", { icon: '🚫' }); return; }
-    if (!canOrder) { toast.error('Switch to buyer mode to place orders'); return; }
+    if (!canOrder) { toast.error('You cannot order your own product'); return; }
     setBuyingNow(true);
     const ok = await addToCart(product, null, 1);
     setBuyingNow(false);
@@ -342,7 +346,7 @@ const ProductCard = ({ product, index = 0 }) => {
     e.stopPropagation();
     if (!isAuthenticated) { toast.error('Please login to customise'); navigate('/login'); return; }
     if (isOwnProduct) { toast.error("You can't customise your own product", { icon: '🚫' }); return; }
-    if (!canOrder) { toast.error('Switch to buyer mode to send customisation requests'); return; }
+    if (!canOrder) { toast.error('You cannot customise your own product'); return; }
     setCustBounce(true);
     setTimeout(() => setCustBounce(false), 500);
     setShowCustom(true);
@@ -533,8 +537,8 @@ const ProductCard = ({ product, index = 0 }) => {
               disabled={buyingNow || product.stock === 0}
               style={{
                 ...styles.buyButton,
-                ...(product.stock === 0 ? styles.buyButtonDisabled : 
-                    custApproved ? styles.buyButtonApproved : styles.buyButtonDefault),
+                ...(product.stock === 0 ? styles.buyButtonDisabled :
+                  custApproved ? styles.buyButtonApproved : styles.buyButtonDefault),
               }}
             >
               {buyingNow ? 'Processing...' : custApproved ? '🛒 Buy Customised' : 'Buy Now'}

@@ -30,14 +30,13 @@ const Login = () => {
 
       if (result.success) {
         if (result.user.role === 'admin') navigate('/admin');
-        else if (result.user.role === 'artisan') navigate('/artisan-dashboard');
         else navigate('/');
       } else {
         // Check if the error is a lockout
         if (result.locked) {
-          const now   = new Date();
+          const now = new Date();
           const until = new Date(result.lockedUntil);
-          const mins  = Math.ceil((until - now) / 60000);
+          const mins = Math.ceil((until - now) / 60000);
           setLockInfo({ lockedUntil: until, minutesLeft: mins });
         }
       }

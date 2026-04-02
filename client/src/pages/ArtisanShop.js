@@ -31,7 +31,7 @@ export default function ArtisanShop() {
 
   const handleBuyNow = async (product) => {
     if (!user) { navigate('/login'); return; }
-    if (user.role !== 'buyer') { addToast('Only buyers can purchase', 'error'); return; }
+    if (!['buyer', 'artisan'].includes(user.role)) { addToast('Not allowed to purchase', 'error'); return; }
     const result = await addToCart(product._id, 1);
     if (result.success) navigate('/cart');
     else addToast(result.message || 'Failed', 'error');
@@ -39,7 +39,7 @@ export default function ArtisanShop() {
 
   const handleAddToCart = async (product) => {
     if (!user) { navigate('/login'); return; }
-    if (user.role !== 'buyer') { addToast('Only buyers can add to cart', 'error'); return; }
+    if (!['buyer', 'artisan'].includes(user.role)) { addToast('Not allowed to add to cart', 'error'); return; }
     await addToCart(product._id, 1);
   };
 
@@ -65,7 +65,7 @@ export default function ArtisanShop() {
   if (!artisan) return <div style={{ textAlign: 'center', padding: 80 }}>Artisan not found.</div>;
 
   const avatar = artisan.profileImage || artisan.avatar?.url;
-  const stars = Math.round(artisan.rating || 0);
+  // Rating system removed (no stars display).
 
   return (
     <div>
@@ -201,12 +201,7 @@ export default function ArtisanShop() {
           flexWrap: 'wrap'
         }}>
           <div>
-            <div style={{ display: 'flex', gap: 2 }}>
-              {[1, 2, 3, 4, 5].map(s => (
-                <span key={s} style={{ color: s <= stars ? '#f59e0b' : '#ddd', fontSize: 16 }}>★</span>
-              ))}
-            </div>
-            <p style={{ fontSize: 13, color: '#666', marginTop: 2 }}>{artisan.rating?.toFixed(1) || '0.0'} ({artisan.reviewCount || 0} reviews)</p>
+            <p style={{ fontSize: 13, color: '#666', marginTop: 2 }}>{artisan.reviewCount || 0} reviews</p>
           </div>
           <div style={{ width: 1, background: '#eee' }} />
           <div>
@@ -274,9 +269,6 @@ export default function ArtisanShop() {
                     }}>{r.buyerName?.[0] || 'B'}</div>
                     <div>
                       <p style={{ fontWeight: 600, fontSize: 14 }}>{r.buyerName}</p>
-                      <div style={{ display: 'flex', gap: 2 }}>
-                        {[1, 2, 3, 4, 5].map(s => <span key={s} style={{ fontSize: 12, color: s <= r.rating ? '#f59e0b' : '#ddd' }}>★</span>)}
-                      </div>
                     </div>
                     {r.isVerifiedPurchase && (
                       <span style={{ marginLeft: 'auto', background: '#d4edda', color: '#155724', padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>

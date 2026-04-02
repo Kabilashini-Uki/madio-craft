@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FiCheckCircle, FiPackage, FiTruck, FiMapPin, FiArrowRight,
+  FiCheckCircle, FiPackage, FiMapPin,
   FiHome, FiShoppingBag, FiClock, FiPhone, FiStar, FiX, FiSend
 } from 'react-icons/fi';
 import { useOrders } from '../context/OrderContext';
@@ -95,12 +95,10 @@ const ReviewModal = ({ item, onClose, onSubmit }) => {
 
 const OrderConfirmation = () => {
   const { id } = useParams();
-  const navigate = useNavigate();
+
   const { getOrder } = useOrders();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [reviewItem, setReviewItem] = useState(null);
-  const [reviewedProducts, setReviewedProducts] = useState(new Set());
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -114,18 +112,14 @@ const OrderConfirmation = () => {
       }
     };
     fetchOrder();
-  }, [id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, getOrder]);
 
   const steps = [
     { icon: <FiCheckCircle />, label: 'Order Placed', done: true },
     { icon: <FiPackage />, label: 'Processing', done: false },
     { icon: <FiMapPin />, label: 'Delivered', done: false },
   ];
-
-  const handleSubmitReview = async (productId, rating, comment) => {
-    await api.post(`/products/${productId}/reviews`, { rating, comment });
-    setReviewedProducts(prev => new Set([...prev, productId]));
-  };
 
   if (loading) {
     return (
@@ -193,16 +187,6 @@ const OrderConfirmation = () => {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-gray-900">Rs. {item.totalPrice?.toLocaleString()}</p>
-                    {item.product?._id && !reviewedProducts.has(item.product._id) ? (
-                      <button onClick={() => setReviewItem(item)}
-                        className="mt-1 text-xs text-primary hover:underline flex items-center gap-1">
-                        <FiStar className="h-3 w-3" /> Rate this
-                      </button>
-                    ) : reviewedProducts.has(item.product?._id) ? (
-                      <span className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                        <FiCheckCircle className="h-3 w-3" /> Reviewed
-                      </span>
-                    ) : null}
                   </div>
                 </div>
               ))}
@@ -238,32 +222,6 @@ const OrderConfirmation = () => {
           </motion.div>
         )}
 
-        {/* Rate & Review Prompt */}
-        {order && order.items?.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
-            className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-6 mb-6">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <FiStar className="h-6 w-6 text-amber-600" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 mb-1">Share Your Experience!</h3>
-                <p className="text-gray-600 text-sm mb-3">
-                  Your reviews help other buyers and support our artisans. Rate your purchased items above.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {order.items?.filter(item => item.product?._id && !reviewedProducts.has(item.product._id)).map((item, i) => (
-                    <button key={i} onClick={() => setReviewItem(item)}
-                      className="px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-full hover:bg-amber-700 transition-colors flex items-center gap-1">
-                      <FiStar className="h-3 w-3" /> Rate {item.product?.name?.slice(0, 15) || 'Product'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
         {/* Actions */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
           className="flex flex-col sm:flex-row gap-4">
@@ -282,16 +240,6 @@ const OrderConfirmation = () => {
         </motion.div>
       </div>
 
-      {/* Review Modal */}
-      <AnimatePresence>
-        {reviewItem && (
-          <ReviewModal
-            item={reviewItem}
-            onClose={() => setReviewItem(null)}
-            onSubmit={handleSubmitReview}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 };

@@ -12,7 +12,7 @@
   
   ::selection {
     @apply bg-primary text-white;
-    background-color: rgba(139, 69, 19, 0.3);
+    background-color: rgba(226, 149, 120, 0.3);
   }
 }
 
@@ -65,12 +65,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #8B4513;
+  background-color: #E29578;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #5D4037;
+  background-color: #D17A5C;
 }
 
 /* Animations */
@@ -84,7 +84,7 @@
 
 .loading-spinner {
   border: 3px solid #f3f3f3;
-  border-top: 3px solid #8B4513;
+  border-top: 3px solid #E29578;
   border-radius: 50%;
   width: 40px;
   height: 40px;

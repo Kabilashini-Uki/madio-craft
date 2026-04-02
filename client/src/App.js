@@ -44,19 +44,23 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  // Use activeRole (for role-switched users) when checking access
-  const effectiveRole = user.activeRole || user.role;
-  if (requiredRole && effectiveRole !== requiredRole) return <Navigate to="/" replace />;
+  // Switch-account system removed. Artisans are allowed to use "buyer" functionality
+  // (ordering other shops, confirming delivery, leaving feedback) without switching roles.
+  if (requiredRole) {
+    const role = user.role;
+    const allowedBuyerRoles = ['buyer', 'artisan'];
+    const isAllowed =
+      requiredRole === 'buyer' ? allowedBuyerRoles.includes(role) : role === requiredRole;
+    if (!isAllowed) return <Navigate to="/" replace />;
+  }
   return children;
 };
 
 const DashboardRedirect = () => {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  // Support role switching: use activeRole when present
-  const activeRole = user.activeRole || user.role;
-  if (activeRole === 'admin') return <Navigate to="/admin" replace />;
-  if (activeRole === 'artisan') return <Navigate to="/artisan-dashboard" replace />;
+  if (user.role === 'admin') return <Navigate to="/admin" replace />;
+  if (user.role === 'artisan') return <Navigate to="/artisan-dashboard" replace />;
   return <BuyerDashboard />;
 };
 

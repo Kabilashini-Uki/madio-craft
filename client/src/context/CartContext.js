@@ -19,7 +19,6 @@ export const CartProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [cartSummary, setCartSummary] = useState({
     subtotal: 0,
-    shipping: 0,
     tax: 0,
     total: 0,
     itemCount: 0
@@ -34,6 +33,7 @@ export const CartProvider = ({ children }) => {
       loadCartFromLocalStorage();
       loadWishlistFromLocalStorage(); // Load wishlist for guests
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, user]);
 
   const loadCartFromLocalStorage = () => {
@@ -64,7 +64,14 @@ export const CartProvider = ({ children }) => {
       const response = await api.get('/cart');
       if (response.data.success) {
         const items = response.data.cart?.items || [];
-        setCartItems(items);
+        // Filter out items with null/undefined products
+        const validItems = items.filter(item => item.product && item.product._id);
+        setCartItems(validItems);
+        
+        // If some items were filtered out, notify user
+        if (items.length !== validItems.length) {
+          toast.error('Some items in your cart are no longer available');
+        }
       }
     } catch (error) {
       console.error('Error loading cart:', error);
@@ -86,21 +93,14 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  // Recalculate summary whenever cart items change
   useEffect(() => {
     const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    
-    // Simple shipping: Free over Rs. 999, otherwise Rs. 99
-    const shipping = subtotal > 999 ? 0 : 99;
-    
-    // No tax applied
+
     const tax = 0;
-    
-    const total = subtotal + shipping;
-    
+    const total = subtotal;
+
     setCartSummary({
       subtotal,
-      shipping,
       tax,
       total,
       itemCount: cartItems.reduce((sum, item) => sum + item.quantity, 0)
@@ -114,7 +114,7 @@ export const CartProvider = ({ children }) => {
 
   // Wishlist functions
   const isInWishlist = useCallback((productId) => {
-    return wishlist.some(item => 
+    return wishlist.some(item =>
       (item._id === productId) || (item.product?._id === productId) || (item.id === productId)
     );
   }, [wishlist]);
@@ -137,7 +137,7 @@ export const CartProvider = ({ children }) => {
           images: product.images,
           artisan: product.artisan
         };
-        
+
         setWishlist(prev => {
           // Check if already in wishlist
           if (prev.some(item => item._id === product._id)) {
@@ -147,7 +147,7 @@ export const CartProvider = ({ children }) => {
           toast.success('Added to wishlist!');
           return [...prev, wishlistItem];
         });
-        
+
         localStorage.setItem('madiocraft_wishlist', JSON.stringify([...wishlist, wishlistItem]));
         return true;
       }
@@ -155,6 +155,7 @@ export const CartProvider = ({ children }) => {
       toast.error('Failed to add to wishlist');
       return false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, wishlist]);
 
   const removeFromWishlist = useCallback(async (productId) => {
@@ -179,13 +180,14 @@ export const CartProvider = ({ children }) => {
       toast.error('Failed to remove from wishlist');
       return false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   const addToCart = useCallback(async (product, customization = null, quantity = 1) => {
     setLoading(true);
     try {
       let price = product.price;
-      
+
       // Add customization price adjustments if any
       if (customization?.options) {
         customization.options.forEach(opt => {
@@ -200,7 +202,7 @@ export const CartProvider = ({ children }) => {
           quantity,
           customization
         });
-        
+
         if (response.data.success) {
           await loadCartFromAPI();
           toast.success('Added to cart!');
@@ -222,24 +224,24 @@ export const CartProvider = ({ children }) => {
           price,
           addedAt: new Date().toISOString()
         };
-        
+
         setCartItems(prev => {
           // Check if same product with same customization exists
-          const existingIndex = prev.findIndex(item => 
+          const existingIndex = prev.findIndex(item =>
             item.product._id === product._id &&
             JSON.stringify(item.customization) === JSON.stringify(customization)
           );
-          
+
           if (existingIndex >= 0) {
             const updated = [...prev];
             updated[existingIndex].quantity += quantity;
             updated[existingIndex].price = price;
             return updated;
           }
-          
+
           return [...prev, cartItem];
         });
-        
+
         toast.success('Added to cart!');
         return true;
       }
@@ -249,6 +251,7 @@ export const CartProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   const updateQuantity = useCallback(async (itemId, newQuantity) => {
@@ -256,16 +259,16 @@ export const CartProvider = ({ children }) => {
       removeFromCart(itemId);
       return;
     }
-    
+
     try {
       if (isAuthenticated) {
         await api.put(`/cart/update/${itemId}`, { quantity: newQuantity });
         await loadCartFromAPI();
       } else {
-        setCartItems(prev => 
-          prev.map(item => 
-            (item.id === itemId || item._id === itemId) 
-              ? { ...item, quantity: newQuantity } 
+        setCartItems(prev =>
+          prev.map(item =>
+            (item.id === itemId || item._id === itemId)
+              ? { ...item, quantity: newQuantity }
               : item
           )
         );
@@ -273,6 +276,7 @@ export const CartProvider = ({ children }) => {
     } catch (error) {
       toast.error('Failed to update quantity');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   const removeFromCart = useCallback(async (itemId) => {
@@ -287,12 +291,13 @@ export const CartProvider = ({ children }) => {
     } catch (error) {
       toast.error('Failed to remove item');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   const clearCart = useCallback(async () => {
     try {
       if (isAuthenticated) {
-        await api.delete('/cart/clear');
+        await api.delete('/cart');
       }
       setCartItems([]);
       localStorage.removeItem('madiocraft_cart');
@@ -315,7 +320,10 @@ export const CartProvider = ({ children }) => {
     wishlist,
     isInWishlist,
     addToWishlist,
-    removeFromWishlist
+    removeFromWishlist,
+    // Add refresh functions
+    refreshCart: loadCartFromAPI,
+    refreshWishlist: loadWishlistFromAPI
   };
 
   return (
