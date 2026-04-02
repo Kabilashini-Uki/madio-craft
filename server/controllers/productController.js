@@ -99,18 +99,47 @@ export const getProducts = async (req, res) => {
     const filter = { isActive: true };
 
     if (category) filter.category = category;
-    if (minPrice || maxPrice) { filter.price = {}; if (minPrice) filter.price.$gte = Number(minPrice); if (maxPrice) filter.price.$lte = Number(maxPrice); }
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = Number(minPrice);
+      if (maxPrice) filter.price.$lte = Number(maxPrice);
+    }
     if (artisan) filter.artisan = artisan;
-    if (search) filter.$or = [{ name: { $regex: search, $options: 'i' } }, { description: { $regex: search, $options: 'i' } }, { tags: { $regex: search, $options: 'i' } }];
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { tags: { $regex: search, $options: 'i' } }
+      ];
+    }
 
     const skip = (page - 1) * limit;
-    const products = await Product.find(filter).populate('artisan', 'name avatar location artisanProfile').sort(sort).skip(skip).limit(Number(limit));
+    const products = await Product.find(filter)
+      .populate('artisan', 'name avatar location artisanProfile')
+      .sort(sort)
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(); // Use lean for better performance
+
     const total = await Product.countDocuments(filter);
 
-    res.json({ success: true, products, pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / limit) } });
+    res.json({
+      success: true,
+      products,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Get products error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch products',
+      error: error.message
+    });
   }
 };
 
@@ -118,14 +147,29 @@ export const getProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
       .populate('artisan', 'name avatar artisanProfile location')
-      .populate('ratings.reviews.user', 'name avatar');
+      .populate('reviews.user', 'name avatar');
 
-    if (!product) return res.status(404).json({ message: 'Product not found' });
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
     res.json({ success: true, product });
   } catch (error) {
-    console.error(error);
-    if (error.name === 'CastError') return res.status(404).json({ message: 'Product not found' });
-    res.status(500).json({ message: 'Server error' });
+    console.error('Get product error:', error);
+    if (error.name === 'CastError') {
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid product ID'
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch product',
+      error: error.message
+    });
   }
 };
 
@@ -208,34 +252,18 @@ export const deleteProduct = async (req, res) => {
   }
 };
 
-export const addReview = async (req, res) => {
-  try {
-    const { rating, comment } = req.body;
-    const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ message: 'Product not found' });
-
-    const alreadyReviewed = product.ratings.reviews.find((r) => r.user.toString() === req.user.id);
-    if (alreadyReviewed) return res.status(400).json({ message: 'Product already reviewed' });
-
-    product.ratings.reviews.push({ user: req.user.id, rating: Number(rating), comment });
-    product.ratings.count = product.ratings.reviews.length;
-    product.ratings.average = product.ratings.reviews.reduce((acc, r) => acc + r.rating, 0) / product.ratings.reviews.length;
-
-    await product.save();
-    res.status(201).json({ success: true, message: 'Review added successfully' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
 
 export const getMyProducts = async (req, res) => {
   try {
-    const products = await Product.find({ artisan: req.user.id }).sort('-createdAt');
+    console.log(`📦 Fetching products for Artisan: ${req.user.id || req.user._id}`);
+    const products = await Product.find({ artisan: req.user.id || req.user._id })
+      .sort('-createdAt')
+      .lean();
+    console.log(`✅ Found ${products.length} products`);
     res.json({ success: true, products });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Error in getMyProducts:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to load products', error: error.message });
   }
 };
 
@@ -317,7 +345,7 @@ export const sendCustomizationRequest = async (req, res) => {
       };
 
       await Notification.create({
-        user: product.artisan._id,
+        user: product.artisan.user?._id || product.artisan.user,
         userModel: 'User',
         type: 'customization-request',
         title: 'Customisation Request',
@@ -327,7 +355,7 @@ export const sendCustomizationRequest = async (req, res) => {
 
       const io = req.app.get('io');
       if (io) {
-        io.to(`user-${product.artisan._id}`).emit('customization-request', socketPayload);
+        io.to(`user-${product.artisan.user?._id || product.artisan.user}`).emit('customization-request', socketPayload);
       }
     } catch (e) {
       console.warn('Notification/Socket failed:', e.message);
@@ -400,13 +428,13 @@ export const respondToCustomization = async (req, res) => {
     try {
       // 5. Store the response as a notification in the buyer's bell.
       await Notification.create({
-        user: actualBuyerId,
+        user: buyerId,
         userModel: 'User',
         type: 'customization-response',
         title: available ? 'Customisation Accepted!' : 'Customisation Unavailable',
         body: available
-          ? `${req.user.name || 'The artisan'} accepted your request for ${product ? product.name : (custReq.productName || 'the product')}.`
-          : `${req.user.name || 'The artisan'} cannot fulfil your customisation for ${product ? product.name : (custReq.productName || 'the product')}.`,
+          ? `Artisan accepted your request for ${product.name}. Price set: Rs. ${customizationPrice}`
+          : `Artisan cannot fulfil your customisation for ${product.name}`,
         data: socketPayload
       });
 
@@ -433,20 +461,26 @@ export const respondToCustomization = async (req, res) => {
 // GET /api/products/customization-requests  (artisan)
 export const getCustomizationRequests = async (req, res) => {
   try {
-    const { status } = req.query;
-    const filter = { artisan: req.user._id };
+    const { status, artisan } = req.query;
+    const filter = {};
+    if (req.user.role === 'admin') {
+      if (artisan) filter.artisan = artisan;
+    } else {
+      filter.artisan = req.user._id;
+    }
     if (status) filter.status = status;
 
     const requests = await CustomizationRequest.find(filter)
       .populate('sender', 'name avatar')
       .populate('product', 'name images price')
       .sort('-timestamp')
-      .limit(100);
+      .limit(100)
+      .lean();
 
     res.json({ success: true, requests });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Get customization requests error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to load customization requests', error: error.message });
   }
 };
 
@@ -459,16 +493,17 @@ export const getMyCustomizationRequests = async (req, res) => {
         select: 'name images price artisan category',
         populate: {
           path: 'artisan',
-          select: 'name artisanProfile.businessName avatar'
+          select: 'name avatar artisanProfile'
         }
       })
       .sort('-timestamp')
-      .limit(50);
+      .limit(50)
+      .lean();
 
     res.json({ success: true, requests });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Get my customization requests error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to load customization requests', error: error.message });
   }
 };
 

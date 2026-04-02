@@ -6,6 +6,7 @@ import multer from 'multer';
 import { fileURLToPath } from 'url';
 import User from '../models/User.js';
 import Artisan from '../models/Artisan.js';
+import Product from '../models/Product.js';
 import { isBatticaloa } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
 import {
@@ -191,6 +192,54 @@ router.delete('/shipping-address/:index', async (req, res) => {
     await user.save();
     res.json({ success: true, addresses: user.buyerProfile.shippingAddresses });
   } catch (e) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ── GET /api/users/wishlist ───────────────────────────────────────
+router.get('/wishlist', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).populate({
+      path: 'buyerProfile.wishlist',
+      populate: { path: 'artisan', select: 'name' },
+    });
+    res.json({ success: true, wishlist: user?.buyerProfile?.wishlist || [] });
+  } catch (e) {
+    console.error('Wishlist fetch error:', e);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ── POST /api/users/wishlist/add ──────────────────────────────────
+router.post('/wishlist/add', async (req, res) => {
+  try {
+    const { productId } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user.buyerProfile) user.buyerProfile = { wishlist: [] };
+    if (!user.buyerProfile.wishlist) user.buyerProfile.wishlist = [];
+    if (!user.buyerProfile.wishlist.includes(productId)) {
+      user.buyerProfile.wishlist.push(productId);
+      await user.save();
+    }
+    res.json({ success: true, message: 'Added to wishlist' });
+  } catch (e) {
+    console.error('Wishlist add error:', e);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ── DELETE /api/users/wishlist/:productId ───────────────────────────
+router.delete('/wishlist/:productId', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user.buyerProfile?.wishlist) return res.json({ success: true, message: 'Removed from wishlist' });
+    user.buyerProfile.wishlist = user.buyerProfile.wishlist.filter(
+      id => String(id) !== String(req.params.productId)
+    );
+    await user.save();
+    res.json({ success: true, message: 'Removed from wishlist' });
+  } catch (e) {
+    console.error('Wishlist remove error:', e);
     res.status(500).json({ message: 'Server error' });
   }
 });

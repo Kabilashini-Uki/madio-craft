@@ -1,15 +1,15 @@
 // server.js
+// Load environment variables
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
-// Load environment variables
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,10 +122,7 @@ app.use(errorHandler);
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/handmade';
-    const conn = await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    const conn = await mongoose.connect(mongoURI);
     console.log(`MongoDB Connected: ${conn.connection.host} / ${conn.connection.name}`);
     return conn;
   } catch (error) {
@@ -136,6 +133,30 @@ const connectDB = async () => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
+
+// Handle EADDRINUSE: kill blocking process and retry once
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`  Port ${PORT} is in use. Attempting to free it...`);
+    import('child_process').then(({ execSync }) => {
+      try {
+        execSync(`fuser -k ${PORT}/tcp`, { stdio: 'ignore' });
+        console.log(`Killed process on port ${PORT}. Retrying...`);
+        setTimeout(() => {
+          httpServer.listen(PORT, () => {
+            console.log(` Server running on http://localhost:${PORT}/api`);
+          });
+        }, 1000);
+      } catch {
+        console.error(` Could not free port ${PORT}. Please manually run: fuser -k ${PORT}/tcp`);
+        process.exit(1);
+      }
+    });
+  } else {
+    console.error('Server error:', err);
+    process.exit(1);
+  }
+});
 
 connectDB().then(() => {
   httpServer.listen(PORT, () => {

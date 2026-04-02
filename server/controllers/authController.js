@@ -1,10 +1,10 @@
 // controllers/authController.js
-import jwt     from 'jsonwebtoken';
-import User    from '../models/User.js';
+import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
 import Artisan from '../models/Artisan.js';
 
 const MAX_LOGIN_ATTEMPTS = 3;
-const LOCK_DURATION_MS   = 60 * 60 * 1000; // 1 hour
+const LOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour
 
 // Batticaloa district locations
 const BATTICALOA_LOCATIONS = [
@@ -53,11 +53,11 @@ export const register = async (req, res) => {
 
     if (role === 'artisan' && artisanProfile) {
       userData.artisanProfile = {
-        businessName:      artisanProfile.businessName || `${name}'s Crafts`,
-        description:       artisanProfile.description  || '',
-        specialties:       artisanProfile.specialties  || [],
+        businessName: artisanProfile.businessName || `${name}'s Crafts`,
+        description: artisanProfile.description || '',
+        specialties: artisanProfile.specialties || [],
         yearsOfExperience: artisanProfile.yearsOfExperience || 0,
-        socialLinks:       { instagram: '', facebook: '', website: '' },
+        socialLinks: { instagram: '', facebook: '', website: '' },
       };
     }
 
@@ -67,12 +67,12 @@ export const register = async (req, res) => {
     if (role === 'artisan' && artisanProfile) {
       try {
         createdArtisan = await Artisan.create({
-          user:              user._id,
-          businessName:      artisanProfile.businessName || `${name}'s Crafts`,
-          description:       artisanProfile.description  || '',
-          specialties:       artisanProfile.specialties  || [],
+          user: user._id,
+          businessName: artisanProfile.businessName || `${name}'s Crafts`,
+          description: artisanProfile.description || '',
+          specialties: artisanProfile.specialties || [],
           yearsOfExperience: artisanProfile.yearsOfExperience || 0,
-          location:          location || '',
+          location: location || '',
         });
       } catch (e) {
         console.error('Failed to create artisan profile:', e);
@@ -87,12 +87,12 @@ export const register = async (req, res) => {
           userId: user._id, createdAt: user.createdAt,
         });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      token:   generateToken(user._id),
+      token: generateToken(user._id),
       user: {
         id: user._id, name: user.name, email: user.email,
         role: user.role, avatar: user.avatar, artisanProfile: user.artisanProfile,
@@ -137,7 +137,7 @@ export const login = async (req, res) => {
       user.loginAttempts = (user.loginAttempts || 0) + 1;
       if (user.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
         user.loginLockedUntil = new Date(now.getTime() + LOCK_DURATION_MS);
-        user.loginAttempts    = 0;
+        user.loginAttempts = 0;
         await user.save();
         return res.status(429).json({
           message: 'Too many failed login attempts. Your account is locked for 1 hour.',
@@ -154,7 +154,7 @@ export const login = async (req, res) => {
 
     // Successful — reset counters
     if (user.loginAttempts > 0 || user.loginLockedUntil) {
-      user.loginAttempts    = 0;
+      user.loginAttempts = 0;
       user.loginLockedUntil = null;
       await user.save();
     }
@@ -164,7 +164,7 @@ export const login = async (req, res) => {
 
     res.json({
       success: true,
-      token:   generateToken(user._id),
+      token: generateToken(user._id),
       user: {
         id: user._id, name: user.name, email: user.email,
         role: user.role, avatar: user.avatar, artisanProfile: user.artisanProfile,
@@ -224,43 +224,3 @@ export const validateLocation = async (req, res) => {
   });
 };
 
-export const switchRole = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select('-password');
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    const isOriginalBuyer = user.role === 'buyer' && !user.originalRole;
-    if (isOriginalBuyer) return res.status(400).json({ message: 'Already a buyer account' });
-
-    const { mode } = req.body;
-    const originalRole = user.originalRole || user.role;
-
-    let activeRole;
-    if (mode === 'buyer') {
-      activeRole = 'buyer';
-      if (!user.originalRole) {
-        await User.findByIdAndUpdate(user._id, { originalRole: user.role, activeRole: 'buyer' });
-      } else {
-        await User.findByIdAndUpdate(user._id, { activeRole: 'buyer' });
-      }
-    } else {
-      activeRole = originalRole;
-      await User.findByIdAndUpdate(user._id, { activeRole: originalRole });
-    }
-
-    const updated = await User.findById(user._id).select('-password');
-    const token   = generateToken(user._id);
-    res.json({
-      success: true, token,
-      user: {
-        id: updated._id, name: updated.name, email: updated.email,
-        role: activeRole, originalRole: updated.originalRole || updated.role,
-        avatar: updated.avatar, artisanProfile: updated.artisanProfile,
-        activeRole: updated.activeRole,
-      },
-    });
-  } catch (error) {
-    console.error('Switch role error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};

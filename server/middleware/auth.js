@@ -31,14 +31,27 @@ export const protect = async (req, res, next) => {
 };
 
 export const authorize = (...roles) => (req, res, next) => {
-  // Use activeRole when set (role-switched users), otherwise fall back to their base role
-  const effectiveRole = req.user?.activeRole || req.user?.role;
+  const effectiveRole = req.user?.role;
   const isBaseAdmin = req.user?.role === 'admin';
 
   if (!req.user || (!roles.includes(effectiveRole) && !isBaseAdmin)) {
     return res.status(403).json({
       message: `User role '${effectiveRole}' is not authorized to access this route`,
     });
+  }
+  next();
+};
+
+/**
+ * Middleware: Allow if the user's BASE role is artisan or admin, 
+ * regardless of their current activeRole (which might be 'buyer' for UI switching).
+ * This ensures artisans can always access their own dashboard data.
+ */
+export const artisanAccess = (req, res, next) => {
+  console.log(`🔒 Checking artisanAccess for User: ${req.user?._id}, Role: ${req.user?.role}`);
+  if (!req.user || (req.user.role !== 'artisan' && req.user.role !== 'admin')) {
+    console.warn(`🚫 Access Denied: User ${req.user?._id} is role '${req.user?.role}'`);
+    return res.status(403).json({ message: 'Only artisans or admins can access this resource' });
   }
   next();
 };

@@ -7,12 +7,13 @@ import Notification from '../models/Notification.js';
 
 export const createOrder = async (req, res) => {
   try {
-    const effectiveRole = req.user.activeRole || req.user.role;
-    if ((req.user.role === 'artisan' || req.user.role === 'admin') && effectiveRole !== 'buyer') {
-      return res.status(403).json({ message: 'Switch to buyer mode to place orders.' });
+    // Artisans can order from OTHER shops, but not their own
+    // Admins cannot place orders
+    if (req.user.role === 'admin') {
+      return res.status(403).json({ message: 'Admins cannot place orders.' });
     }
 
-    const { items, shippingAddress, subtotal, shippingCost, tax, totalAmount } = req.body;
+    const { items, deliveryAddress, subtotal, totalAmount } = req.body;
     const buyer = req.user._id;
 
     if (!items?.length) return res.status(400).json({ message: 'No items in order' });
@@ -27,8 +28,12 @@ export const createOrder = async (req, res) => {
       if (product.stock < item.quantity)
         return res.status(400).json({ message: `Only ${product.stock} units of ${product.name} available` });
 
-      // product.artisan may be populated object or raw ObjectId
       const productArtisanId = product.artisan?._id || product.artisan;
+
+      // Prevent artisan from ordering from their own shop
+      if (req.user.role === 'artisan' && String(productArtisanId) === String(req.user._id)) {
+        return res.status(403).json({ message: 'You cannot purchase from your own shop' });
+      }
 
       if (!artisanUserId) {
         artisanUserId = productArtisanId;
@@ -53,15 +58,12 @@ export const createOrder = async (req, res) => {
       buyer,
       artisan: artisanUserId,
       items: orderItems,
-      shippingAddress,
+      deliveryAddress,
       paymentMethod: 'cod',
       paymentStatus: 'pending',
       orderStatus: 'pending',
       subtotal: subtotal || 0,
-      shippingCost: shippingCost || 0,
-      vat: tax || 0,
       totalAmount: totalAmount || 0,
-      estimatedDelivery: new Date(Date.now() + 5 * 86400000),
     });
 
     // Notify artisan via socket
@@ -91,7 +93,6 @@ export const createOrder = async (req, res) => {
           data: socketPayload
         });
         io.to(`user-${artisanUserId}`).emit('new-order', socketPayload);
-        // Also notify admin
         io.emit('admin-new-order', {
           orderId,
           buyerName: buyerUser?.name || 'A buyer',
@@ -142,7 +143,6 @@ export const createOrder = async (req, res) => {
         orderId: order.orderId,
         totalAmount: order.totalAmount,
         paymentMethod: 'cod',
-        estimatedDelivery: order.estimatedDelivery,
       },
     });
   } catch (error) {
@@ -154,13 +154,14 @@ export const createOrder = async (req, res) => {
 export const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ buyer: req.user._id })
-      .populate('artisan', 'name artisanProfile.businessName avatar')
-      .populate('items.product', 'name images')
-      .sort('-createdAt');
+      .populate('artisan', 'name email avatar artisanProfile')
+      .populate('items.product', 'name images price')
+      .sort('-createdAt')
+      .lean();
     res.json({ success: true, orders });
   } catch (error) {
-    console.error('Get orders error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Get my orders error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to load orders', error: error.message });
   }
 };
 
@@ -192,11 +193,12 @@ export const getArtisanOrders = async (req, res) => {
     const orders = await Order.find({ artisan: req.user._id })
       .populate('buyer', 'name email phone avatar')
       .populate('items.product', 'name images price')
-      .sort('-createdAt');
+      .sort('-createdAt')
+      .lean();
     res.json({ success: true, orders });
   } catch (error) {
-    console.error('Get artisan orders error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Get artisan orders error:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to load orders', error: error.message });
   }
 };
 
@@ -242,7 +244,6 @@ export const updateOrderStatus = async (req, res) => {
           data: payload
         });
         io.to(`user-${order.buyer}`).emit('order-status-update', payload);
-        // Admin notification too
         io.emit('admin-order-status', { orderId: order.orderId, status });
       }
     } catch (e) { console.warn('Socket status update failed:', e.message); }
@@ -287,7 +288,7 @@ export const cancelOrder = async (req, res) => {
           orderId: order.orderId,
         };
         await Notification.create({
-          user: order.artisan._id,
+          user: order.artisan._id || order.artisan,
           userModel: 'User',
           type: 'order-cancelled',
           title: 'Order Cancelled',
@@ -306,72 +307,9 @@ export const cancelOrder = async (req, res) => {
   }
 };
 
-export const submitOrderReview = async (req, res) => {
-  try {
-    const { rating, comment } = req.body;
-    if (!rating || rating < 1 || rating > 5)
-      return res.status(400).json({ message: 'Rating must be between 1 and 5' });
-
-    const order = await Order.findById(req.params.id)
-      .populate('artisan', 'name')
-      .populate('items.product', 'name');
-
-    if (!order) return res.status(404).json({ message: 'Order not found' });
-    if (String(order.buyer) !== String(req.user._id))
-      return res.status(403).json({ message: 'Not authorized' });
-    if (order.orderStatus !== 'delivered')
-      return res.status(400).json({ message: 'Can only review delivered orders' });
-    if (order.review) return res.status(400).json({ message: 'Already reviewed' });
-
-    order.review = { rating: Number(rating), comment: comment || '', createdAt: new Date() };
-    order.reviewedAt = new Date();
-    await order.save();
-
-    try {
-      for (const item of order.items) {
-        const product = await Product.findById(item.product);
-        if (!product) continue;
-        const alreadyReviewed = product.ratings.reviews.find(r => String(r.user) === String(req.user._id));
-        if (!alreadyReviewed) {
-          product.ratings.reviews.push({ user: req.user._id, rating: Number(rating), comment: comment || '' });
-          product.ratings.count = product.ratings.reviews.length;
-          product.ratings.average = product.ratings.reviews.reduce((a, r) => a + r.rating, 0) / product.ratings.reviews.length;
-          await product.save();
-        }
-      }
-    } catch (e) { console.warn('Product rating update failed:', e.message); }
-
-    try {
-      const io = req.app.get('io');
-      if (io) {
-        const payload = {
-          orderId: order.orderId,
-          rating,
-          comment,
-          buyerName: req.user.name,
-          productName: order.items[0]?.product?.name || '',
-        };
-        await Notification.create({
-          user: order.artisan._id,
-          userModel: 'User',
-          type: 'new-review',
-          title: '⭐ New Review!',
-          body: `${req.user.name || 'A buyer'} gave ${rating}★ for ${payload.productName}`,
-          data: payload
-        });
-        io.to(`user-${order.artisan._id}`).emit('new-review', payload);
-      }
-    } catch (_) { }
-
-    res.json({ success: true, message: 'Review submitted successfully', order });
-  } catch (error) {
-    console.error('Review error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
 export const confirmReceived = async (req, res) => {
   try {
+    const { received, rating, comment } = req.body;
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (String(order.buyer) !== String(req.user._id))
@@ -380,10 +318,107 @@ export const confirmReceived = async (req, res) => {
       return res.status(400).json({ message: 'Order not yet delivered' });
 
     order.buyerConfirmedAt = new Date();
+    order.buyerReceived = received;
+
+    // If buyer confirms receipt with rating, store review
+    if (received && rating) {
+      const ratingNum = Number(rating);
+      if (ratingNum < 1 || ratingNum > 5) {
+        return res.status(400).json({ message: 'Rating must be between 1 and 5' });
+      }
+
+      order.buyerReview = {
+        rating: ratingNum,
+        comment: comment || '',
+        createdAt: new Date(),
+      };
+      
+      // Update product rating
+      for (const item of order.items) {
+        const product = await Product.findById(item.product);
+        if (product) {
+          product.reviews.push({
+            user: order.buyer,
+            userName: req.user.name,
+            rating: ratingNum,
+            review: comment || '',
+            createdAt: new Date(),
+          });
+          product.updateRating();
+          await product.save();
+        }
+      }
+      
+      // Update artisan rating in Artisan model
+      const Artisan = (await import('../models/Artisan.js')).default;
+      const artisan = await Artisan.findOne({ user: order.artisan });
+      if (artisan) {
+        artisan.reviews.push({
+          buyer: order.buyer,
+          buyerName: req.user.name,
+          buyerAvatar: req.user.avatar?.url || '',
+          rating: ratingNum,
+          comment: comment || '',
+          orderId: order._id,
+          productId: order.items[0]?.product,
+          isVerifiedPurchase: true,
+          createdAt: new Date(),
+        });
+        artisan.updateRating();
+        await artisan.save();
+      }
+    } else {
+      order.buyerReview = null;
+    }
     await order.save();
 
-    res.json({ success: true, message: 'Delivery confirmed', order });
+    // Notify artisan about review
+    if (received && rating) {
+      try {
+        const io = req.app.get('io');
+        if (io) {
+          const payload = {
+            orderId: order.orderId,
+            buyerName: req.user.name,
+            rating,
+            comment: comment || '',
+          };
+          await Notification.create({
+            user: order.artisan,
+            userModel: 'User',
+            type: 'new-review',
+            title: '⭐ New Review Received!',
+            body: `${req.user.name} rated your order ${rating}★`,
+            data: payload
+          });
+          io.to(`user-${order.artisan}`).emit('new-review', payload);
+        }
+      } catch (e) { console.warn('Review notification failed:', e.message); }
+    }
+
+    res.json({ success: true, message: 'Delivery status confirmed', order });
   } catch (error) {
+    console.error('Confirm received error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const confirmPayment = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (String(order.artisan) !== String(req.user._id))
+      return res.status(403).json({ message: 'Not authorized' });
+    if (order.orderStatus !== 'delivered')
+      return res.status(400).json({ message: 'Order must be delivered before confirming payment' });
+
+    order.artisanReceivedPayment = true;
+    order.paymentStatus = 'completed';
+    await order.save();
+
+    res.json({ success: true, message: 'Payment confirmed', order });
+  } catch (error) {
+    console.error('Confirm payment error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

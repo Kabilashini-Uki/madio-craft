@@ -169,7 +169,7 @@ export const getOrCreateRoom = async (req, res) => {
         };
         await Notification.create({
           user: artisanId,
-          userModel: 'Artisan',
+          userModel: 'User',
           type: 'chat',
           title: 'New Chat Started',
           body: payload.message,

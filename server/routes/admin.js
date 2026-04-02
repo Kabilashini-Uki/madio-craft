@@ -1,11 +1,19 @@
 // routes/admin.js
 import { Router } from 'express';
 import {
-  getStats, getUsers, getProducts, getOrders,
-  verifyArtisan, suspendUser, deleteUser,
-  updateProductStatus, deleteProduct,
-  updateOrderStatus, refundOrder,
-  loginAsUser, getArtisanStats,
+  getStats,
+  getUsers,
+  getAdminProducts as getProducts,
+  getAdminOrders as getOrders,
+  verifyArtisan,
+  suspendUser,
+  deleteUser,
+  updateProductStatus,
+  deleteAdminProduct as deleteProduct,
+  updateOrderStatus,
+  refundOrder,
+  loginAsUser,
+  getArtisanStats,
 } from '../controllers/adminController.js';
 import { protect, authorize } from '../middleware/auth.js';
 

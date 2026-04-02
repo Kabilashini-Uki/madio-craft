@@ -20,7 +20,8 @@ export const getStats = async (req, res) => {
         Order.countDocuments({ orderStatus: 'delivered' }),
         Order.countDocuments({ orderStatus: 'cancelled' }),
         Order.aggregate([
-          { $match: { orderStatus: 'delivered' } },
+          // Revenue should be counted only after artisan confirms payment
+          { $match: { orderStatus: 'delivered', artisanReceivedPayment: true } },
           { $group: { _id: null, total: { $sum: '$totalAmount' } } }
         ]),
       ]);
@@ -48,48 +49,45 @@ export const getStats = async (req, res) => {
 // GET /api/admin/users
 export const getUsers = async (req, res) => {
   try {
-    const users = await User.find().select('-password').sort('-createdAt').lean();
+    const users = await User.find()
+      .select('-password')
+      .sort('-createdAt')
+      .lean();
 
-    // Enrich artisan users with their stats from Artisan model
-    const enrichedUsers = await Promise.all(users.map(async (u) => {
-      if (u.role === 'artisan') {
-        const artisan = await Artisan.findOne({ user: u._id }).select('stats businessName isVerified').lean();
-        return { ...u, artisanProfile: { ...u.artisanProfile, ...artisan } };
-      }
-      return u;
-    }));
-
-    res.json({ success: true, users: enrichedUsers });
+    res.json({ success: true, users });
   } catch (e) {
-    console.error('Get users error:', e);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Get users error:', e.message);
+    res.status(500).json({ success: false, message: 'Failed to load users', error: e.message });
   }
 };
 
 // GET /api/admin/products
-export const getProducts = async (req, res) => {
+export const getAdminProducts = async (req, res) => {
   try {
     const products = await Product.find()
-      .populate('artisan', 'name artisanProfile.businessName')
-      .sort('-createdAt');
+      .populate('artisan', 'name email artisanProfile avatar')
+      .sort('-createdAt')
+      .lean();
     res.json({ success: true, products });
   } catch (e) {
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Get admin products error:', e.message);
+    res.status(500).json({ success: false, message: 'Failed to load products', error: e.message });
   }
 };
 
 // GET /api/admin/orders
-export const getOrders = async (req, res) => {
+export const getAdminOrders = async (req, res) => {
   try {
     const orders = await Order.find()
-      .populate('buyer', 'name email phone location buyerProfile')
-      .populate('artisan', 'name email artisanProfile')
+      .populate('buyer', 'name email phone location avatar')
+      .populate('artisan', 'name email avatar artisanProfile')
       .populate('items.product', 'name images category price')
-      .sort('-createdAt');
+      .sort('-createdAt')
+      .lean();
     res.json({ success: true, orders });
   } catch (e) {
-    console.error('Get orders error:', e);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Get admin orders error:', e.message);
+    res.status(500).json({ success: false, message: 'Failed to load orders', error: e.message });
   }
 };
 
@@ -121,7 +119,8 @@ export const suspendUser = async (req, res) => {
 // DELETE /api/admin/users/:id
 export const deleteUser = async (req, res) => {
   try {
-    await User.findByIdAndDelete(req.params.id);
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ success: true, message: 'User deleted' });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
@@ -140,9 +139,10 @@ export const updateProductStatus = async (req, res) => {
 };
 
 // DELETE /api/admin/products/:id
-export const deleteProduct = async (req, res) => {
+export const deleteAdminProduct = async (req, res) => {
   try {
-    await Product.findByIdAndDelete(req.params.id);
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
     res.json({ success: true, message: 'Product deleted' });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
@@ -164,7 +164,7 @@ export const updateOrderStatus = async (req, res) => {
 export const refundOrder = async (req, res) => {
   try {
     const order = await Order.findByIdAndUpdate(req.params.id,
-      { 'paymentInfo.status': 'refunded', orderStatus: 'cancelled' }, { new: true });
+      { paymentStatus: 'refunded', orderStatus: 'cancelled' }, { new: true });
     if (!order) return res.status(404).json({ message: 'Order not found' });
     res.json({ success: true, order });
   } catch (e) {
@@ -195,14 +195,15 @@ export const getArtisanStats = async (req, res) => {
   try {
     const artisanId = req.params.id;
     const [orders, products] = await Promise.all([
-      Order.find({ artisan: artisanId }),
+      Order.find({ artisan: artisanId }).populate('buyer', 'name avatar'),
       Product.find({ artisan: artisanId }).sort('-createdAt')
     ]);
 
     const delivered = orders.filter(o => o.orderStatus === 'delivered').length;
     const cancelled = orders.filter(o => o.orderStatus === 'cancelled').length;
     const pending = orders.filter(o => ['pending', 'confirmed'].includes(o.orderStatus)).length;
-    const revenue = orders.filter(o => o.orderStatus === 'delivered').reduce((s, o) => s + (o.totalAmount || 0), 0);
+    const paidOrders = orders.filter(o => o.orderStatus === 'delivered' && o.artisanReceivedPayment === true);
+    const revenue = paidOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
     const commission = revenue * 0.1; // 10%
 
     // monthly breakdown
@@ -211,21 +212,39 @@ export const getArtisanStats = async (req, res) => {
       const key = `${new Date(o.createdAt).getFullYear()}-${String(new Date(o.createdAt).getMonth() + 1).padStart(2, '0')}`;
       if (!monthly[key]) monthly[key] = { month: key, count: 0, revenue: 0, commission: 0, quantity: 0 };
       monthly[key].count++;
-      if (o.orderStatus === 'delivered') {
-        const amt = o.totalAmount || o.finalAmount || 0;
+      if (o.orderStatus === 'delivered' && o.artisanReceivedPayment === true) {
+        const amt = o.totalAmount || 0;
         monthly[key].revenue += amt;
         monthly[key].commission += amt * 0.1;
       }
       monthly[key].quantity += o.items?.reduce((s, i) => s + i.quantity, 0) || 0;
     });
 
+    // Reviews with ratings
+    const reviews = orders
+      .filter(o => o.orderStatus === 'delivered' && o.buyerReceived === true && o.buyerReview)
+      .sort((a, b) => new Date(b.buyerReview?.createdAt || 0) - new Date(a.buyerReview?.createdAt || 0))
+      .map(o => ({
+        buyer: o.buyer ? { _id: o.buyer._id, name: o.buyer.name, avatar: o.buyer.avatar } : null,
+        rating: o.buyerReview?.rating || 0,
+        comment: o.buyerReview?.comment || '',
+        createdAt: o.buyerReview?.createdAt,
+      }));
+
+    // Calculate average rating
+    const avgRating = reviews.length > 0 
+      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length 
+      : 0;
+
     res.json({
       success: true,
       stats: {
         total: orders.length, delivered, cancelled, pending,
         revenue, commission,
-        products, // Include products list
+        products,
+        averageRating: avgRating,
         monthly: Object.values(monthly).sort((a, b) => a.month.localeCompare(b.month)),
+        reviews,
       },
     });
   } catch (e) {
