@@ -7,12 +7,12 @@ module.exports = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#E29578',
-          dark: '#D17A5C',
-          light: '#F0B49A',
+          DEFAULT: '#723d46',
+          dark: '#5a2f36',
+          light: '#a85a68',
         },
         background: '#FAF3E0',
-        accent: '#E29578',
+        accent: '#723d46',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

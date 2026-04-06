@@ -7,6 +7,7 @@ import {
   sendCustomizationRequest, respondToCustomization,
   getCustomizationRequests, getMyCustomizationRequests,
   getCustomizationRequest,
+  uploadImages,
 } from '../controllers/productController.js';
 import { protect, authorize, artisanAccess } from '../middleware/auth.js';
 import { uploadProductImages } from '../middleware/upload.js';
@@ -28,6 +29,9 @@ router.get('/counts', getCategoryCounts);
 router.get('/category-counts', getCategoryCounts);
 router.get('/categories', getCategories);
 router.get('/my', protect, artisanAccess, getMyProducts);
+
+// Image upload endpoint
+router.post('/upload-images', protect, artisanAccess, uploadProductImages, uploadImages);
 
 // Customization request queries
 router.get('/customization-requests', protect, artisanAccess, getCustomizationRequests);

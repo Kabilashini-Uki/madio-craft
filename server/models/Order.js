@@ -39,7 +39,7 @@ const orderSchema = new mongoose.Schema({
   paymentStatus: { type: String, enum: ['pending', 'completed'], default: 'pending' },
   orderStatus: {
     type: String,
-    enum: ['pending', 'confirmed', 'processing', 'order ready', 'shipped', 'delivered', 'cancelled'],
+    enum: ['pending', 'confirmed', 'processing', 'order ready', 'delivered', 'cancelled'],
     default: 'pending',
   },
   buyerConfirmedAt: { type: Date, default: null },
@@ -63,7 +63,7 @@ const orderSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
-orderSchema.pre('save', function (next) {
+orderSchema.pre('save', async function () {
   this.updatedAt = Date.now();
   if (!this.orderId) {
     const d = new Date();
@@ -73,7 +73,6 @@ orderSchema.pre('save', function (next) {
     const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     this.orderId = `MC${yr}${mo}${day}${rand}`;
   }
-  next();
 });
 
 export default mongoose.model('Order', orderSchema);

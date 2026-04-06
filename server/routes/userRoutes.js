@@ -76,16 +76,18 @@ router.put('/profile', async (req, res) => {
     if (artisanProfile) {
       update['artisanProfile.businessName'] = artisanProfile.businessName;
       update['artisanProfile.description'] = artisanProfile.description;
+      update['artisanProfile.tagline'] = artisanProfile.tagline;
       update['artisanProfile.specialties'] = artisanProfile.specialties;
       update['artisanProfile.yearsOfExperience'] = artisanProfile.yearsOfExperience;
       update['artisanProfile.socialLinks'] = artisanProfile.socialLinks;
     }
 
-    const user = await User.findByIdAndUpdate(req.user.id, { $set: update }, { new: true }).select('-password');
+    const userId = req.user._id || req.user.id;
+    const user = await User.findByIdAndUpdate(userId, { $set: update }, { new: true }).select('-password');
 
     // Also sync location to the Artisan profile document
     if (location !== undefined) {
-      await Artisan.findOneAndUpdate({ user: req.user.id }, { $set: { location } });
+      await Artisan.findOneAndUpdate({ user: userId }, { $set: { location } });
     }
 
     res.json({ success: true, user });
@@ -97,12 +99,19 @@ router.put('/profile', async (req, res) => {
 
 // ── POST /api/users/avatar ────────────────────────────────────────
 // Accepts: multipart 'avatar' file  OR  JSON body { imageUrl: "https://..." }
+// Requires: Authentication (protect middleware already applied at router level)
 router.post('/avatar', (req, res) => {
+  // Verify user is authenticated
+  if (!req.user || (!req.user.id && !req.user._id)) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+
   uploadAvatarMw(req, res, async (err) => {
     if (err) return res.status(400).json({ message: err.message || 'Upload error' });
 
     try {
       let url, public_id;
+      const userId = req.user._id || req.user.id;
 
       if (req.file) {
         // File upload path
@@ -118,7 +127,7 @@ router.post('/avatar', (req, res) => {
       }
 
       const user = await User.findByIdAndUpdate(
-        req.user.id,
+        userId,
         { $set: { 'avatar.url': url, 'avatar.public_id': public_id } },
         { new: true }
       ).select('-password');
@@ -132,12 +141,19 @@ router.post('/avatar', (req, res) => {
 
 // ── POST /api/users/cover ─────────────────────────────────────────
 // Accepts: multipart 'coverImage' file  OR  JSON body { imageUrl: "https://..." }
+// Requires: Authentication (protect middleware already applied at router level)
 router.post('/cover', (req, res) => {
+  // Verify user is authenticated
+  if (!req.user || (!req.user.id && !req.user._id)) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+
   uploadCoverMw(req, res, async (err) => {
     if (err) return res.status(400).json({ message: err.message || 'Upload error' });
 
     try {
       let url, public_id;
+      const userId = req.user._id || req.user.id;
 
       const file = (req.files?.coverImage?.[0]) || (req.files?.cover?.[0]);
       if (file) {
@@ -154,7 +170,7 @@ router.post('/cover', (req, res) => {
       }
 
       const user = await User.findByIdAndUpdate(
-        req.user.id,
+        userId,
         { $set: { 'coverImage.url': url, 'coverImage.public_id': public_id } },
         { new: true }
       ).select('-password');

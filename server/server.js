@@ -87,7 +87,7 @@ app.get('/api/test', (req, res) => {
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log(`🔌 New Socket Connection: ${socket.id}`);
+  console.log(` New Socket Connection: ${socket.id}`);
 
   socket.on('register-user', (userId) => {
     if (userId) socket.join(`user-${userId}`);
@@ -110,13 +110,23 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log(`🔌 Socket Disconnected: ${socket.id}`);
+    console.log(` Socket Disconnected: ${socket.id}`);
   });
 });
 
 // Error handling middleware
 app.use(notFound);
 app.use(errorHandler);
+
+// Global error handlers for uncaught exceptions
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error(' Uncaught Exception:', error);
+  process.exit(1);
+});
 
 // MongoDB connection
 const connectDB = async () => {
@@ -160,7 +170,7 @@ httpServer.on('error', (err) => {
 
 connectDB().then(() => {
   httpServer.listen(PORT, () => {
-    console.log(` Server running on http://localhost:${PORT}/api`);
+    console.log(` MADIO CRAFT is running on ${PORT}`);
   });
 });
 

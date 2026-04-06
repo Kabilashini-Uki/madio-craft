@@ -27,13 +27,13 @@ const productSchema = new mongoose.Schema({
     required: true,
     enum: ['jewelry', 'pottery', 'textiles', 'woodwork', 'metalwork', 'glass', 'other'],
   },
+  tags: [{ type: String, trim: true, default: [] }],
   images: [{
     public_id: { type: String, default: '' },
     url: { type: String, default: '' },
     isPrimary: { type: Boolean, default: false },
   }],
   customizationOptions: [customizationOptionSchema],
-  materials: [{ type: String }],
   dimensions: {
     height: { type: Number, default: 0 },
     width: { type: Number, default: 0 },
@@ -48,7 +48,6 @@ const productSchema = new mongoose.Schema({
   averageRating: { type: Number, default: 0 },
   totalReviews: { type: Number, default: 0 },
 
-  tags: [{ type: String }],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
@@ -64,9 +63,18 @@ productSchema.methods.updateRating = function () {
   this.totalReviews = this.reviews.length;
 };
 
-productSchema.pre('save', function (next) {
+productSchema.methods.isCustomizationAllowed = function (artisanAcceptsCustom) {
+  return this.isCustomizable && (artisanAcceptsCustom !== false);
+};
+
+productSchema.methods.getCustomizationAccess = function (artisanAcceptsCustom) {
+  if (!this.isCustomizable) return { allowed: false, reason: 'customization_disabled' };
+  if (artisanAcceptsCustom === false) return { allowed: false, reason: 'artisan_disabled' };
+  return { allowed: true, reason: null };
+};
+
+productSchema.pre('save', async function () {
   this.updatedAt = Date.now();
-  next();
 });
 
 export default mongoose.model('Product', productSchema);

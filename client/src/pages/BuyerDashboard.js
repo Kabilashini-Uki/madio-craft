@@ -46,7 +46,7 @@ const BuyerDashboard = () => {
   const [newAddress, setNewAddress] = useState({ name: '', address: '', city: '', state: '', zipCode: '', phone: '', isDefault: false });
   const [savingProfile, setSavingProfile] = useState(false);
   const [reviewModal, setReviewModal] = useState(null);
-  const [reviewForm, setReviewForm] = useState({ comment: '' });
+  const [reviewForm, setReviewForm] = useState({ comment: '', rating: 5 });
   const [submittingReview, setSubmittingReview] = useState(false);
   const [customizationRequests, setCustomizationRequests] = useState([]);
   const [loadingCustomizations, setLoadingCustomizations] = useState(false);
@@ -179,11 +179,12 @@ const BuyerDashboard = () => {
     try {
       await api.post(`/orders/${reviewModal.orderId}/confirm-received`, {
         received: true,
+        rating: reviewForm.rating,
         comment: reviewForm.comment
       });
       toast.success('Feedback submitted! Thank you.');
       setReviewModal(null);
-      setReviewForm({ comment: '' });
+      setReviewForm({ comment: '', rating: 5 });
       fetchOrders();
     } catch (e) {
       toast.error('Failed to submit feedback');
@@ -194,9 +195,9 @@ const BuyerDashboard = () => {
     <div className="min-h-screen bg-white">
       <div className="flex">
         {/* Sidebar */}
-        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
-          <div className="p-4 flex items-center justify-between border-b border-amber-800 h-16">
-            {sidebarOpen && <h1 className="text-lg font-bold text-amber-100">My Account</h1>}
+        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-[#7d4f50] to-[#6b4344] text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+          <div className="p-4 flex items-center justify-between border-b border-[#6b4344] h-16">
+            {sidebarOpen && <h1 className="text-lg font-bold text-[#d4a574]">My Account</h1>}
             <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-amber-800 rounded-lg ml-auto">
               <FiMenu className="h-5 w-5" />
             </button>
@@ -695,6 +696,25 @@ const BuyerDashboard = () => {
               className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
               <h3 className="text-xl font-bold mb-1">Confirm Delivery & Feedback</h3>
               <p className="text-gray-500 text-sm mb-5">Private feedback for {reviewModal.artisanName}</p>
+              
+              {/* Rating Stars */}
+              <div className="mb-5">
+                <p className="font-medium text-sm mb-3">Rate your experience</p>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <button
+                      key={star}
+                      onClick={() => setReviewForm(f => ({ ...f, rating: star }))}
+                      className="transition-transform hover:scale-125"
+                    >
+                      <FiStar
+                        className={`h-7 w-7 ${star <= reviewForm.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="mb-5">
                 <p className="font-medium text-sm mb-2">Private Feedback</p>
                 <textarea

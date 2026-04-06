@@ -1,7 +1,8 @@
 // src/components/ProductCard.js
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { FiEdit3 } from 'react-icons/fi';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useNotif } from '../context/NotifContext';
@@ -110,60 +111,6 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
   },
-  artisanRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: '12px',
-  },
-  artisanInfo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  artisanAvatar: {
-    width: '28px',
-    height: '28px',
-    borderRadius: '50%',
-    overflow: 'hidden',
-    background: '#f3f4f6',
-  },
-  artisanAvatarImg: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  },
-  artisanName: {
-    fontSize: '0.875rem',
-    color: '#4b5563',
-  },
-  location: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    color: '#9ca3af',
-  },
-  locationText: {
-    fontSize: '0.75rem',
-  },
-  productName: {
-    fontSize: '1rem',
-    fontWeight: 600,
-    color: '#111827',
-    marginBottom: '4px',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  description: {
-    fontSize: '0.875rem',
-    color: '#6b7280',
-    marginBottom: '12px',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-  },
   stockStatus: {
     fontSize: '0.75rem',
     fontWeight: 600,
@@ -177,25 +124,6 @@ const styles = {
   },
   outOfStock: {
     color: '#dc2626',
-  },
-  approvedBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    background: '#f0fdf4',
-    border: '1px solid #bbf7d0',
-    borderRadius: '12px',
-    padding: '12px',
-    marginBottom: '12px',
-  },
-  approvedIcon: {
-    color: '#16a34a',
-    fontSize: '1rem',
-  },
-  approvedText: {
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    color: '#166534',
   },
   priceRow: {
     display: 'flex',
@@ -217,31 +145,31 @@ const styles = {
     width: '36px',
     height: '36px',
     borderRadius: '50%',
-    background: '#fef3c7',
+    background: '#f5e6e8',
     border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    color: '#b45309',
+    color: '#723d46',
     transition: 'all 0.2s',
     position: 'relative',
   },
   customizeButtonHover: {
-    background: '#b45309',
+    background: '#723d46',
     color: 'white',
   },
   cartButton: {
     width: '36px',
     height: '36px',
     borderRadius: '50%',
-    background: '#fef3c7',
+    background: '#f5e6e8',
     border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    color: '#b45309',
+    color: '#723d46',
     transition: 'all 0.2s',
   },
   cartButtonDisabled: {
@@ -260,13 +188,8 @@ const styles = {
     transition: 'all 0.2s',
   },
   buyButtonDefault: {
-    background: '#b45309',
+    background: '#723d46',
     color: 'white',
-  },
-  buyButtonApproved: {
-    background: '#16a34a',
-    color: 'white',
-    boxShadow: '0 0 0 2px #86efac',
   },
   buyButtonDisabled: {
     background: '#f3f4f6',
@@ -307,8 +230,10 @@ const ProductCard = ({ product, index = 0 }) => {
     String(user?.id || user?._id) === String(product.artisan?._id || product.artisan)
   );
   const canOrder = isAuthenticated && !isOwnProduct;
-  const custApproved = isCustomizationApproved(product._id);
-  const artisanLoc = product.artisan?.location || '';
+  const artisanAcceptsCustom = product.artisan?.acceptCustomOrders !== false;
+  const customizationAccess = product.isCustomizable && artisanAcceptsCustom 
+    ? { allowed: true, reason: null } 
+    : { allowed: false, reason: 'customization_disabled' };
 
   const handleAddToCart = async (e) => {
     e.preventDefault();
@@ -438,112 +363,106 @@ const ProductCard = ({ product, index = 0 }) => {
 
         {/* Content */}
         <div style={styles.content}>
-          {/* Artisan Row */}
-          <div style={styles.artisanRow}>
-            <div style={styles.artisanInfo}>
-              <div style={styles.artisanAvatar}>
-                <img
-                  src={product.artisan?.avatar?.url || `https://ui-avatars.com/api/?name=${product.artisan?.name || 'A'}&background=b45309&color=fff&size=28`}
-                  alt={product.artisan?.name}
-                  style={styles.artisanAvatarImg}
-                  onError={(e) => {
-                    e.target.src = `https://ui-avatars.com/api/?name=${product.artisan?.name || 'A'}&background=b45309&color=fff&size=28`;
-                  }}
-                />
-              </div>
-              <span style={styles.artisanName}>{product.artisan?.name}</span>
-            </div>
-            {artisanLoc && (
-              <div style={styles.location}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                  <circle cx="12" cy="10" r="3" />
-                </svg>
-                <span style={styles.locationText}>{artisanLoc}</span>
-              </div>
-            )}
-          </div>
-
-          <h3 style={styles.productName}>{product.name}</h3>
-          <p style={styles.description}>{product.description}</p>
-          {stockBadge()}
-
-          {/* Customization Approved Banner */}
-          {custApproved && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              style={styles.approvedBanner}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={styles.approvedIcon}>
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-              <span style={styles.approvedText}>Customisation approved — you can now purchase!</span>
-            </motion.div>
-          )}
-
-          {/* Price and Actions */}
+          {/* Price */}
           <div style={styles.priceRow}>
             <span style={styles.price}>Rs. {product.price?.toLocaleString()}</span>
-            <div style={styles.actionsRow} onClick={(e) => e.stopPropagation()}>
-              {/* Customize Button */}
-              <motion.button
-                onClick={openCustomize}
-                animate={custBounce ? { scale: [1, 1.2, 1], rotate: [0, 15, -15, 0] } : {}}
-                whileHover={{ scale: 1.1 }}
-                style={{
-                  ...styles.customizeButton,
-                  ...(isHovered ? styles.customizeButtonHover : {}),
-                }}
-                title="Customise colour & size"
-              >
-                <PaletteIcon />
-              </motion.button>
+          </div>
 
-              {/* Cart Button */}
-              <button
-                onClick={handleAddToCart}
-                disabled={addingToCart || product.stock === 0}
-                style={{
-                  ...styles.cartButton,
-                  ...(product.stock === 0 ? styles.cartButtonDisabled : {}),
-                }}
-              >
-                {addingToCart ? (
-                  <div style={{
-                    width: '16px',
-                    height: '16px',
-                    border: '2px solid currentColor',
-                    borderTopColor: 'transparent',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite',
-                  }} />
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="9" cy="21" r="1" />
-                    <circle cx="20" cy="21" r="1" />
-                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-                  </svg>
-                )}
-              </button>
+          {/* Stock Status */}
+          {stockBadge()}
+
+          {/* Customization Badge */}
+          {customizationAccess.allowed && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              background: '#f5e6e8',
+              borderRadius: '8px',
+              marginBottom: '8px'
+            }}>
+              <FiEdit3 style={{ fontSize: '12px', color: '#723d46' }} />
+              <span style={{ fontSize: '0.75rem', color: '#723d46', fontWeight: 500 }}>
+                Customization Available
+              </span>
             </div>
-          </div>
+          )}
 
-          {/* Buy Now Button */}
-          <div onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={handleBuyNow}
-              disabled={buyingNow || product.stock === 0}
-              style={{
-                ...styles.buyButton,
-                ...(product.stock === 0 ? styles.buyButtonDisabled :
-                  custApproved ? styles.buyButtonApproved : styles.buyButtonDefault),
-              }}
-            >
-              {buyingNow ? 'Processing...' : custApproved ? '🛒 Buy Customised' : 'Buy Now'}
-            </button>
-          </div>
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px' }} onClick={(e) => e.stopPropagation()}>
+  {/* Left side - Customize and Cart buttons */}
+  <div style={styles.actionsRow}>
+    {/* Customize Button */}
+    <motion.button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCustomize(e);
+      }}
+      animate={custBounce ? { scale: [1, 1.2, 1], rotate: [0, 15, -15, 0] } : {}}
+      whileHover={{ scale: 1.1 }}
+      style={{
+        ...styles.customizeButton,
+        ...(isHovered ? styles.customizeButtonHover : {}),
+      }}
+      title="Customise colour & size"
+    >
+      <PaletteIcon />
+    </motion.button>
+
+    {/* Cart Button */}
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleAddToCart(e);
+      }}
+      disabled={addingToCart || product.stock === 0}
+      style={{
+        ...styles.cartButton,
+        ...(product.stock === 0 ? styles.cartButtonDisabled : {}),
+      }}
+    >
+      {addingToCart ? (
+        <div style={{
+          width: '16px',
+          height: '16px',
+          border: '2px solid currentColor',
+          borderTopColor: 'transparent',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+        }} />
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="9" cy="21" r="1" />
+          <circle cx="20" cy="21" r="1" />
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+        </svg>
+      )}
+    </button>
+  </div>
+
+  {/* Right side - Buy Now Button */}
+  <div>
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleBuyNow(e);
+      }}
+      disabled={buyingNow || product.stock === 0}
+      style={{
+        ...styles.buyButton,
+        width: '100px',
+        ...(product.stock === 0 ? styles.buyButtonDisabled : styles.buyButtonDefault),
+      }}
+    >
+      {buyingNow ? 'Processing...' : 'Buy Now'}
+    </button>
+  </div>
+</div>
+
         </div>
       </motion.div>
 

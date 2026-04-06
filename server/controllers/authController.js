@@ -64,14 +64,14 @@ export const register = async (req, res) => {
     const user = await User.create(userData);
 
     let createdArtisan = null;
-    if (role === 'artisan' && artisanProfile) {
+    if (role === 'artisan') {
       try {
         createdArtisan = await Artisan.create({
           user: user._id,
-          businessName: artisanProfile.businessName || `${name}'s Crafts`,
-          description: artisanProfile.description || '',
-          specialties: artisanProfile.specialties || [],
-          yearsOfExperience: artisanProfile.yearsOfExperience || 0,
+          businessName: artisanProfile?.businessName || `${name}'s Crafts`,
+          description: artisanProfile?.description || '',
+          specialties: artisanProfile?.specialties || [],
+          yearsOfExperience: artisanProfile?.yearsOfExperience || 0,
           location: location || '',
         });
       } catch (e) {

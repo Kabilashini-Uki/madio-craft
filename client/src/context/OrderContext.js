@@ -43,7 +43,7 @@ export const OrderProvider = ({ children }) => {
   const createOrder = async (orderData) => {
     setLoading(true);
     try {
-      console.log('🚀 Creating order with data:', JSON.stringify(orderData, null, 2));
+      console.log(' Creating order with data:', JSON.stringify(orderData, null, 2));
       
       // Validate required fields
       if (!orderData.items || orderData.items.length === 0) {
@@ -65,11 +65,11 @@ export const OrderProvider = ({ children }) => {
         totalAmount: Number(orderData.totalAmount) || 0
       };
       
-      console.log('📤 Sending sanitized data to server:', sanitizedData);
+      console.log(' Sending sanitized data to server:', sanitizedData);
       
       const response = await api.post('/orders', sanitizedData);
       
-      console.log('📥 Server response:', response.data);
+      console.log(' Server response:', response.data);
       
       if (response.data.success) {
         setCurrentOrder(response.data.order);
@@ -79,7 +79,7 @@ export const OrderProvider = ({ children }) => {
         throw new Error(response.data.message || 'Failed to create order');
       }
     } catch (error) {
-      console.error('❌ Create order error in context:', error);
+      console.error(' Create order error in context:', error);
       
       // Log detailed error information
       if (error.response) {

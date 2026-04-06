@@ -44,6 +44,7 @@ const userSchema = new mongoose.Schema({
   artisanProfile: {
     businessName: { type: String, default: '' },
     description: { type: String, default: '' },
+    tagline: { type: String, default: '' },
     specialties: [{ type: String }],
     yearsOfExperience: { type: Number, default: 0 },
     portfolioImages: [{ public_id: { type: String, default: '' }, url: { type: String, default: '' } }],
@@ -70,10 +71,16 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
+userSchema.pre('save', async function () {
+  if (!this.isModified('password')) {
+    return;
+  }
+  try {
+    const hash = await bcrypt.hash(this.password, 10);
+    this.password = hash;
+  } catch (err) {
+    throw err;
+  }
 });
 
 userSchema.methods.comparePassword = async function (password) {

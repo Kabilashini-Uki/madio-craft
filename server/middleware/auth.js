@@ -48,9 +48,9 @@ export const authorize = (...roles) => (req, res, next) => {
  * This ensures artisans can always access their own dashboard data.
  */
 export const artisanAccess = (req, res, next) => {
-  console.log(`🔒 Checking artisanAccess for User: ${req.user?._id}, Role: ${req.user?.role}`);
+  console.log(`Checking artisanAccess for User: ${req.user?._id}, Role: ${req.user?.role}`);
   if (!req.user || (req.user.role !== 'artisan' && req.user.role !== 'admin')) {
-    console.warn(`🚫 Access Denied: User ${req.user?._id} is role '${req.user?.role}'`);
+    console.warn(` Access Denied: User ${req.user?._id} is role '${req.user?.role}'`);
     return res.status(403).json({ message: 'Only artisans or admins can access this resource' });
   }
   next();

@@ -2,23 +2,26 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiShoppingCart, FiEdit3, FiShoppingBag } from 'react-icons/fi';
+import { FiShoppingCart, FiEdit3, FiShoppingBag, FiHeart, FiEye } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
-// Simple Product Card for Home Page - Only shows essentials
+// Simple Product Card for Home Page - Fixed buttons
 const SimpleProductCard = ({ product, index }) => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
-  const { addToCart } = useCart();
+  const { addToCart, isInWishlist, addToWishlist, removeFromWishlist } = useCart();
   const [addingToCart, setAddingToCart] = useState(false);
   const [buyingNow, setBuyingNow] = useState(false);
+  const [addingToWishlist, setAddingToWishlist] = useState(false);
 
-  const isOwnProduct = isAuthenticated && user && (
-    String(user?.id || user?._id) === String(product.artisan?._id || product.artisan)
+  const artisanId = product.artisan?._id || product.artisan;
+  const isOwnProduct = isAuthenticated && user && artisanId && (
+    String(user?.id || user?._id) === String(artisanId)
   );
+  const inWishlist = isInWishlist(product._id);
 
   const handleAddToCart = async (e) => {
     e.preventDefault();
@@ -45,7 +48,7 @@ const SimpleProductCard = ({ product, index }) => {
         toast.success('Added to cart!');
       }
     } catch (error) {
-      console.error('Add to cart error:', error);
+      toast.error(error?.message || 'Failed to add to cart');
     } finally {
       setAddingToCart(false);
     }
@@ -64,10 +67,6 @@ const SimpleProductCard = ({ product, index }) => {
       toast.error("You can't order your own product");
       return;
     }
-    if (user?.role === 'admin') {
-      toast.error('Admins cannot place orders');
-      return;
-    }
     
     setBuyingNow(true);
     try {
@@ -76,7 +75,7 @@ const SimpleProductCard = ({ product, index }) => {
         navigate('/checkout?productId=' + product._id);
       }
     } catch (error) {
-      console.error('Buy now error:', error);
+      toast.error(error?.message || 'Failed to buy now');
     } finally {
       setBuyingNow(false);
     }
@@ -95,13 +94,33 @@ const SimpleProductCard = ({ product, index }) => {
       toast.error("You can't customize your own product");
       return;
     }
-    if (user?.role === 'admin') {
-      toast.error('Admins cannot customize products');
+    
+    navigate(`/products/${product._id}?customize=true`);
+  };
+
+  const handleWishlist = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!isAuthenticated) {
+      toast.error('Please login');
+      navigate('/login');
       return;
     }
     
-    // Navigate to product page with customization modal open
-    navigate(`/products/${product._id}?customize=true`);
+    setAddingToWishlist(true);
+    if (inWishlist) {
+      await removeFromWishlist(product._id);
+    } else {
+      await addToWishlist(product);
+    }
+    setAddingToWishlist(false);
+  };
+
+  const handleViewDetails = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(`/products/${product._id}`);
   };
 
   const handleCardClick = () => {
@@ -142,6 +161,51 @@ const SimpleProductCard = ({ product, index }) => {
             objectFit: 'cover',
           }}
         />
+        
+        {/* Stock Badge */}
+        <div style={{
+          position: 'absolute',
+          top: '12px',
+          right: '12px',
+          padding: '4px 8px',
+          borderRadius: '8px',
+          fontSize: '11px',
+          fontWeight: 'bold',
+          backgroundColor: product.stock === 0 ? '#ef4444' : product.stock <= 5 ? '#f97316' : '#10b981',
+          color: 'white',
+          zIndex: 2,
+        }}>
+          {product.stock === 0 ? 'Out of Stock' : product.stock <= 5 ? `Only ${product.stock} left` : 'In Stock'}
+        </div>
+
+        {/* Wishlist Button - Floating */}
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleWishlist(e);
+          }}
+          disabled={addingToWishlist}
+          style={{
+            position: 'absolute',
+            top: '12px',
+            left: '12px',
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            backgroundColor: 'white',
+            border: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            zIndex: 2,
+            color: inWishlist ? '#ef4444' : '#9ca3af',
+          }}
+        >
+          <FiHeart size={18} fill={inWishlist ? '#ef4444' : 'none'} />
+        </button>
       </div>
 
       {/* Product Info */}
@@ -163,15 +227,12 @@ const SimpleProductCard = ({ product, index }) => {
           fontSize: '0.875rem',
           color: '#9ca3af',
           marginBottom: '8px',
-          cursor: 'pointer',
-          textDecoration: 'none',
-          transition: 'color 0.2s',
         }}
         onClick={(e) => {
           e.stopPropagation();
           navigate(`/artisans/${product.artisan?._id || product.artisan}`);
         }}
-        onMouseEnter={(e) => e.currentTarget.style.color = '#E29578'}
+        onMouseEnter={(e) => e.currentTarget.style.color = '#723d46'}
         onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
         >
           by {product.artisan?.name || 'Unknown Artisan'}
@@ -180,7 +241,7 @@ const SimpleProductCard = ({ product, index }) => {
         <p style={{
           fontSize: '1.5rem',
           fontWeight: 700,
-          color: '#E29578',
+          color: '#723d46',
           marginBottom: '12px',
         }}>
           Rs. {product.price?.toLocaleString()}
@@ -199,116 +260,129 @@ const SimpleProductCard = ({ product, index }) => {
           WebkitBoxOrient: 'vertical',
           minHeight: '2.8em',
         }}>
-          {product.description || product.shortDescription || 'Handcrafted with care and attention to detail'}
+          {product.description || 'Handcrafted with care and attention to detail'}
         </p>
 
-        {/* Icon Buttons */}
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-          {/* Add to Cart Icon */}
+        {/* Action Buttons Row */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+          {/* Add to Cart Button */}
           <button
-            onClick={handleAddToCart}
-            disabled={addingToCart || isOwnProduct}
-            title="Add to Cart"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleAddToCart(e);
+            }}
+            disabled={addingToCart || isOwnProduct || product.stock === 0}
             style={{
-              width: '40px',
-              height: '40px',
+              flex: 1,
+              padding: '10px 12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: isOwnProduct ? '#e5e7eb' : '#E29578',
-              color: isOwnProduct ? '#9ca3af' : 'white',
+              gap: '6px',
+              background: (isOwnProduct || product.stock === 0) ? '#e5e7eb' : '#723d46',
+              color: (isOwnProduct || product.stock === 0) ? '#9ca3af' : 'white',
               border: 'none',
               borderRadius: '8px',
-              cursor: isOwnProduct ? 'not-allowed' : 'pointer',
+              cursor: (isOwnProduct || product.stock === 0) ? 'not-allowed' : 'pointer',
+              fontSize: '13px',
+              fontWeight: 500,
               transition: 'all 0.2s',
-              pointerEvents: 'auto',
-            }}
-            onMouseEnter={(e) => {
-              if (!isOwnProduct && !addingToCart) {
-                e.currentTarget.style.background = '#D17A5C';
-                e.currentTarget.style.transform = 'scale(1.1)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isOwnProduct) {
-                e.currentTarget.style.background = '#E29578';
-                e.currentTarget.style.transform = 'scale(1)';
-              }
             }}
           >
-            {addingToCart ? '...' : <FiShoppingCart size={18} />}
+            {addingToCart ? '...' : <FiShoppingCart size={14} />}
+            Add to Cart
           </button>
 
-          {/* Customization Icon */}
+          {/* Buy Now Button */}
           <button
-            onClick={handleCustomize}
-            disabled={isOwnProduct}
-            title="Customize Product"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleBuyNow(e);
+            }}
+            disabled={buyingNow || isOwnProduct || product.stock === 0}
             style={{
-              width: '40px',
-              height: '40px',
+              flex: 1,
+              padding: '10px 12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: isOwnProduct ? '#e5e7eb' : 'white',
-              color: isOwnProduct ? '#9ca3af' : '#E29578',
-              border: `2px solid ${isOwnProduct ? '#e5e7eb' : '#E29578'}`,
-              borderRadius: '8px',
-              cursor: isOwnProduct ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s',
-              pointerEvents: 'auto',
-            }}
-            onMouseEnter={(e) => {
-              if (!isOwnProduct) {
-                e.currentTarget.style.background = '#E29578';
-                e.currentTarget.style.color = 'white';
-                e.currentTarget.style.transform = 'scale(1.1)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isOwnProduct) {
-                e.currentTarget.style.background = 'white';
-                e.currentTarget.style.color = '#E29578';
-                e.currentTarget.style.transform = 'scale(1)';
-              }
-            }}
-          >
-            <FiEdit3 size={18} />
-          </button>
-
-          {/* Buy Now Icon */}
-          <button
-            onClick={handleBuyNow}
-            disabled={buyingNow || isOwnProduct}
-            title="Buy Now"
-            style={{
-              width: '40px',
-              height: '40px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: isOwnProduct ? '#e5e7eb' : '#111827',
-              color: isOwnProduct ? '#9ca3af' : 'white',
+              gap: '6px',
+              background: (isOwnProduct || product.stock === 0) ? '#e5e7eb' : '#111827',
+              color: (isOwnProduct || product.stock === 0) ? '#9ca3af' : 'white',
               border: 'none',
               borderRadius: '8px',
-              cursor: isOwnProduct ? 'not-allowed' : 'pointer',
+              cursor: (isOwnProduct || product.stock === 0) ? 'not-allowed' : 'pointer',
+              fontSize: '13px',
+              fontWeight: 500,
               transition: 'all 0.2s',
-              pointerEvents: 'auto',
-            }}
-            onMouseEnter={(e) => {
-              if (!isOwnProduct && !buyingNow) {
-                e.currentTarget.style.background = '#374151';
-                e.currentTarget.style.transform = 'scale(1.1)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isOwnProduct) {
-                e.currentTarget.style.background = '#111827';
-                e.currentTarget.style.transform = 'scale(1)';
-              }
             }}
           >
-            {buyingNow ? '...' : <FiShoppingBag size={18} />}
+            {buyingNow ? '...' : <FiShoppingBag size={14} />}
+            Buy Now
+          </button>
+        </div>
+
+        {/* Second Row: Customize + View Details */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }} onClick={(e) => e.stopPropagation()}>
+          {/* Customize Button - Only if customizable */}
+          {product.isCustomizable && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCustomize(e);
+              }}
+              disabled={isOwnProduct}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                background: isOwnProduct ? '#e5e7eb' : 'white',
+                color: isOwnProduct ? '#9ca3af' : '#723d46',
+                border: `1.5px solid ${isOwnProduct ? '#e5e7eb' : '#723d46'}`,
+                borderRadius: '8px',
+                cursor: isOwnProduct ? 'not-allowed' : 'pointer',
+                fontSize: '12px',
+                fontWeight: 500,
+                transition: 'all 0.2s',
+              }}
+            >
+              <FiEdit3 size={12} />
+              Customize
+            </button>
+          )}
+
+          {/* View Details Button */}
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleViewDetails(e);
+            }}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              background: '#f3f4f6',
+              color: '#374151',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 500,
+              transition: 'all 0.2s',
+            }}
+          >
+            <FiEye size={12} />
+            View Details
           </button>
         </div>
       </div>
@@ -316,7 +390,7 @@ const SimpleProductCard = ({ product, index }) => {
   );
 };
 
-// Inline styles
+// Inline styles (keep your existing styles)
 const styles = {
   container: {
     maxWidth: '1280px',
@@ -384,7 +458,7 @@ const styles = {
   },
   primaryButton: {
     padding: '16px 32px',
-    background: 'linear-gradient(to right, #b45309, #92400e)',
+    background: 'linear-gradient(to right, #723d46, #5a2f36)',
     color: 'white',
     border: 'none',
     borderRadius: '9999px',
@@ -414,7 +488,7 @@ const styles = {
     margin: '0 auto 64px',
   },
   sectionSubtitle: {
-    color: '#b45309',
+    color: '#723d46',
     fontSize: '0.875rem',
     fontWeight: 600,
     textTransform: 'uppercase',
@@ -441,14 +515,14 @@ const styles = {
   featureIcon: {
     width: '64px',
     height: '64px',
-    background: '#fef3c7',
+    background: '#f5e6e8',
     borderRadius: '16px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     margin: '0 auto 24px',
     fontSize: '24px',
-    color: '#b45309',
+    color: '#723d46',
   },
   featureTitle: {
     fontSize: '1.25rem',
@@ -463,16 +537,14 @@ const styles = {
   },
   productsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
     gap: '32px',
     marginTop: '48px',
-    filter: 'drop-shadow(0 10px 15px rgba(0,0,0,0.05))',
   },
   categoriesGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '32px',
-    filter: 'drop-shadow(0 10px 15px rgba(0,0,0,0.05))',
   },
   categoryCard: {
     position: 'relative',
@@ -551,25 +623,17 @@ const Home = () => {
     fetchData();
   }, []);
 
-
-
   const fetchData = async () => {
     try {
       setLoading(true);
-
-      // Fetch latest 4 products for Trending Treasures
-      const productsRes = await api.get('/products?limit=4&sort=-createdAt');
+      const productsRes = await api.get('/products?limit=3&sort=-createdAt');
       const fetchedProducts = productsRes.data?.products || [];
-      
-      // Filter out any null or invalid products
-      const validProducts = fetchedProducts.filter(p => p && p._id && p.name && p.images);
+      const validProducts = fetchedProducts.filter(p => p && p._id && p.name);
       setProducts(validProducts);
 
-      // Fetch categories from products
       const allProductsRes = await api.get('/products?limit=100');
       const allProducts = allProductsRes.data?.products || [];
 
-      // Extract unique categories with images
       const categoryMap = new Map();
       allProducts.forEach(product => {
         if (product && product.category && !categoryMap.has(product.category)) {
@@ -585,11 +649,9 @@ const Home = () => {
       });
 
       setCategories(Array.from(categoryMap.values()).slice(0, 4));
-
     } catch (error) {
       console.error('Error fetching data:', error);
       setProducts([]);
-      setCategories([]);
     } finally {
       setLoading(false);
     }
@@ -697,7 +759,7 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Featured Products */}
+      {/* Featured Products - Trending Treasures */}
       <section style={{ ...styles.section, background: '#f9fafb' }}>
         <div style={styles.container}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '64px' }}>
@@ -711,7 +773,7 @@ const Home = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                color: '#b45309',
+                color: '#723d46',
                 background: 'none',
                 border: 'none',
                 fontSize: '1rem',
@@ -790,7 +852,7 @@ const Home = () => {
               onClick={() => navigate('/register')}
               style={{
                 padding: '16px 32px',
-                background: 'linear-gradient(to right, #b45309, #92400e)',
+                background: 'linear-gradient(to right, #723d46, #5a2f36)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '9999px',

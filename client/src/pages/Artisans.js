@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiMapPin, FiStar, FiAward, FiPackage, FiShield } from 'react-icons/fi';
+import { FiMapPin, FiStar, FiAward, FiPackage, FiShield, FiMessageCircle } from 'react-icons/fi';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -19,7 +19,28 @@ const Artisans = () => {
     try {
       setLoading(true);
       const res = await api.get('/artisans?limit=100');
-      setArtisans(res.data.artisans || []);
+      const artisansData = res.data.artisans || [];
+      
+      // Fetch additional details for each artisan
+      const enrichedArtisans = await Promise.all(
+        artisansData.map(async (artisan) => {
+          try {
+            const detailRes = await api.get(`/artisans/${artisan._id}`);
+            const fullData = detailRes.data.artisan;
+            return {
+              ...artisan,
+              products: fullData.products || [],
+              fullArtisanData: fullData.fullArtisanData || {},
+              reviews: fullData.fullArtisanData?.reviews || [],
+            };
+          } catch (err) {
+            console.error(`Failed to fetch details for artisan ${artisan._id}:`, err);
+            return artisan;
+          }
+        })
+      );
+      
+      setArtisans(enrichedArtisans);
     } catch (error) {
       console.error('Failed to load artisans', error);
       toast.error('Failed to load artisans');
@@ -28,17 +49,10 @@ const Artisans = () => {
     }
   };
 
-  // Calculate years of experience
-  const getYearsExperience = (artisan) => {
-    if (artisan.yearsOfExperience) return artisan.yearsOfExperience;
-    if (artisan.startYear) return new Date().getFullYear() - artisan.startYear;
-    return 0;
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-4 border-amber-700 border-t-transparent"></div>
+        <div className="animate-spin rounded-full h-16 w-16 border-4 border-[#723d46] border-t-transparent"></div>
       </div>
     );
   }
@@ -67,95 +81,139 @@ const Artisans = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                onClick={() => navigate(`/artisans/${artisan._id}/shop`)}
-                className="bg-white rounded-2xl shadow-lg overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
+                className="bg-white rounded-2xl shadow-lg overflow-hidden cursor-pointer hover:shadow-xl transition-shadow h-full flex flex-col"
               >
-                {/* FIXED: Background Image */}
-                <div className="relative h-40 bg-gradient-to-r from-amber-700 to-amber-800">
+                {/* Cover Image Section */}
+                <div className="relative h-48 bg-gradient-to-r from-[#723d46] to-[#5a2f36]">
                   {artisan.coverImage?.url && (
                     <img
                       src={artisan.coverImage.url}
-                      alt=""
+                      alt="Cover"
                       className="w-full h-full object-cover"
                     />
                   )}
 
-                  {/* FIXED: Profile Image */}
-                  <div className="absolute -bottom-12 left-6">
+                  {/* Profile Avatar - Positioned Absolutely */}
+                  <div className="absolute -bottom-16 left-6">
                     {artisan.avatar?.url ? (
                       <img
                         src={artisan.avatar.url}
                         alt={artisan.name}
-                        className="w-24 h-24 rounded-2xl border-4 border-white object-cover shadow-lg"
+                        className="w-32 h-32 rounded-2xl border-4 border-white object-cover shadow-lg"
                       />
                     ) : (
-                      <div className="w-24 h-24 rounded-2xl border-4 border-white bg-amber-200 flex items-center justify-center text-3xl font-bold text-amber-800 shadow-lg">
+                      <div className="w-32 h-32 rounded-2xl border-4 border-white bg-[#f5e6e8] flex items-center justify-center text-5xl font-bold text-[#723d46] shadow-lg">
                         {artisan.name?.[0]?.toUpperCase()}
                       </div>
                     )}
 
                     {artisan.isVerified && (
-                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
-                        <FiShield className="h-3 w-3 text-white" />
+                      <div className="absolute -top-2 -right-2 w-7 h-7 bg-green-500 rounded-full flex items-center justify-center border-2 border-white shadow-lg">
+                        <FiShield className="h-4 w-4 text-white" />
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Content */}
-                <div className="pt-16 p-6">
-                  <h3 className="text-xl font-bold text-gray-900 mb-1">{artisan.name}</h3>
-                  <p className="text-amber-700 font-medium mb-4">
-                    {artisan.artisanProfile?.businessName || ''}
+                {/* Content Section */}
+                <div className="pt-20 px-6 pb-6 flex-1 flex flex-col">
+                  {/* Name and Business */}
+                  <h3 className="text-2xl font-bold text-gray-900 mb-1">{artisan.name}</h3>
+                  <p className="text-[#723d46] font-semibold text-lg">
+                    {artisan.artisanProfile?.businessName || 'Artisan'}
                   </p>
+                  
+                  {/* Tagline */}
+                  {artisan.artisanProfile?.tagline && (
+                    <p className="text-gray-600 text-sm mb-3 italic">"{artisan.artisanProfile.tagline}"</p>
+                  )}
 
-                  {/* FIXED: Location - only once */}
+                  {/* Location */}
                   {artisan.location && (
                     <div className="flex items-center text-gray-600 mb-3">
-                      <FiMapPin className="h-4 w-4 mr-2 text-amber-700" />
+                      <FiMapPin className="h-4 w-4 mr-2 text-[#723d46] flex-shrink-0" />
                       <span className="text-sm">{artisan.location}</span>
                     </div>
                   )}
 
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    <div className="text-center">
-                      <div className="flex items-center justify-center text-amber-700 mb-1">
-                        <FiAward className="h-4 w-4" />
-                      </div>
-                      {/* FIXED: Years Experience */}
-                      <p className="text-sm font-semibold">{getYearsExperience(artisan)} yrs</p>
+                  {/* Phone */}
+                  {artisan.phone && (
+                    <div className="flex items-center text-gray-600 mb-3">
+                      <span className="text-sm">📞 {artisan.phone}</span>
                     </div>
+                  )}
 
-                    <div className="text-center">
-                      <div className="flex items-center justify-center text-amber-700 mb-1">
-                        <FiPackage className="h-4 w-4" />
-                      </div>
-                      {/* FIXED: Product Count */}
-                      <p className="text-sm font-semibold">{artisan.productCount || 0}</p>
-                    </div>
-
-                    <div className="text-center">
-                      <div className="flex items-center justify-center text-amber-700 mb-1">
-                        <FiStar className="h-4 w-4" />
-                      </div>
-                      {/* FIXED: Rating */}
-                      <p className="text-sm font-semibold">
-                        {artisan.ratings?.average?.toFixed(1) || '0.0'}
-                      </p>
-                    </div>
-                  </div>
+                  {/* Description */}
+                  {artisan.artisanProfile?.description && (
+                    <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                      {artisan.artisanProfile.description}
+                    </p>
+                  )}
 
                   {/* Specialties */}
                   {artisan.artisanProfile?.specialties?.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 mb-4">
                       {artisan.artisanProfile.specialties.slice(0, 3).map((spec, i) => (
-                        <span key={i} className="px-2 py-1 bg-amber-50 text-amber-700 text-xs rounded-full">
+                        <span key={i} className="px-2 py-1 bg-[#f5e6e8] text-[#723d46] text-xs rounded-full font-medium">
                           {spec}
                         </span>
                       ))}
                     </div>
                   )}
+
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-4 gap-2 mb-4 py-3 border-t border-b border-gray-200">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center text-[#723d46] mb-1">
+                        <FiAward className="h-4 w-4" />
+                      </div>
+                      <p className="text-xs font-semibold text-gray-900">
+                        {artisan.artisanProfile?.yearsOfExperience || 0}y
+                      </p>
+                      <p className="text-xs text-gray-500">Exp</p>
+                    </div>
+
+                    <div className="text-center">
+                      <div className="flex items-center justify-center text-[#723d46] mb-1">
+                        <FiPackage className="h-4 w-4" />
+                      </div>
+                      <p className="text-xs font-semibold text-gray-900">
+                        {artisan.products?.length || 0}
+                      </p>
+                      <p className="text-xs text-gray-500">Products</p>
+                    </div>
+
+                    <div className="text-center">
+                      <div className="flex items-center justify-center text-[#723d46] mb-1">
+                        <FiStar className="h-4 w-4" />
+                      </div>
+                      <p className="text-xs font-semibold text-gray-900">
+                        {artisan.artisanProfile?.ratings?.average?.toFixed(1) || '0.0'}
+                      </p>
+                      <p className="text-xs text-gray-500">Rating</p>
+                    </div>
+
+                    <div className="text-center">
+                      <div className="flex items-center justify-center text-[#723d46] mb-1">
+                        <FiMessageCircle className="h-4 w-4" />
+                      </div>
+                      <p className="text-xs font-semibold text-gray-900">
+                        {artisan.reviews?.length || 0}
+                      </p>
+                      <p className="text-xs text-gray-500">Reviews</p>
+                    </div>
+                  </div>
+
+                  {/* Spacer to push button to bottom */}
+                  <div className="flex-grow"></div>
+
+                  {/* View Shop Button - Changed to #723d46 */}
+                  <button
+                    onClick={() => navigate(`/artisans/${artisan._id}/shop`)}
+                    className="w-full px-4 py-3 bg-[#723d46] text-white rounded-xl font-semibold hover:bg-[#5a2f36] transition-all mt-4"
+                  >
+                    View Shop
+                  </button>
                 </div>
               </motion.div>
             ))}

@@ -3,8 +3,7 @@ import { ChatRoom, Message } from '../models/ChatRoom.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 
-// POST /api/chat/customization/room
-// Buyer starts a customization chat with a specific artisan.
+
 // Creates or reuses an existing customization room and notifies the artisan via socket.
 export const createCustomizationRoom = async (req, res) => {
   try {

@@ -84,8 +84,9 @@
   <script>
     // Set initial user agent
     document.getElementById('ua').textContent = navigator.userAgent.substring(0, 60) + '...';
-    document.getElementById('ls').textContent = typeof(Storage) !== 'undefined' ? '✅ Yes' : '❌ No';
-    document.getElementById('ss').textContent = typeof(Storage) !== 'undefined' ? '✅ Yes' : '❌ No';
+    document.getElementById('ls').textContent = typeof(Storage) !== 'undefined' ? 'Yes' : ' No';
+    document.getElementById('ss').textContent = typeof(Storage) !== 'undefined' ? ' Yes' : ' No';
+    
 
     // Utility functions
     function log(elementId, message, type = 'info') {

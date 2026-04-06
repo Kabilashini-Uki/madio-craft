@@ -282,14 +282,25 @@ export const CartProvider = ({ children }) => {
   const removeFromCart = useCallback(async (itemId) => {
     try {
       if (isAuthenticated) {
-        await api.delete(`/cart/remove/${itemId}`);
-        await loadCartFromAPI();
+        const response = await api.delete(`/cart/remove/${itemId}`);
+        console.log('Remove response:', response.data);
+        
+        if (response.data.success) {
+          // Update local state immediately with the response data
+          const items = response.data.cart?.items || [];
+          setCartItems(items);
+          toast.success('Item removed');
+        } else {
+          toast.error(response.data.message || 'Failed to remove item');
+        }
       } else {
         setCartItems(prev => prev.filter(item => item.id !== itemId && item._id !== itemId));
+        toast.success('Item removed');
       }
-      toast.success('Item removed');
     } catch (error) {
-      toast.error('Failed to remove item');
+      console.error('Remove from cart error:', error);
+      const errorMsg = error?.message || error?.response?.data?.message || 'Failed to remove item';
+      toast.error(errorMsg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);

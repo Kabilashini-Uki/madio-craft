@@ -56,7 +56,7 @@ export const getUsers = async (req, res) => {
 
     res.json({ success: true, users });
   } catch (e) {
-    console.error('❌ Get users error:', e.message);
+    console.error(' Get users error:', e.message);
     res.status(500).json({ success: false, message: 'Failed to load users', error: e.message });
   }
 };
@@ -70,7 +70,7 @@ export const getAdminProducts = async (req, res) => {
       .lean();
     res.json({ success: true, products });
   } catch (e) {
-    console.error('❌ Get admin products error:', e.message);
+    console.error('Get admin products error:', e.message);
     res.status(500).json({ success: false, message: 'Failed to load products', error: e.message });
   }
 };
@@ -86,7 +86,7 @@ export const getAdminOrders = async (req, res) => {
       .lean();
     res.json({ success: true, orders });
   } catch (e) {
-    console.error('❌ Get admin orders error:', e.message);
+    console.error(' Get admin orders error:', e.message);
     res.status(500).json({ success: false, message: 'Failed to load orders', error: e.message });
   }
 };

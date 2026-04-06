@@ -1,5 +1,5 @@
-// src/pages/AdminDashboard.js - Complete Admin Panel
-import React, { useState, useEffect } from 'react';
+// src/pages/AdminDashboard.js - Complete Admin Panel with Profile Upload
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiUsers, FiPackage, FiShoppingBag,
@@ -8,16 +8,16 @@ import {
   FiRefreshCw, FiX,
   FiAward,
   FiGrid, FiList,
-  FiStar, FiMessageSquare,
+  FiMessageSquare,
   FiArrowLeft, FiAlertCircle,
-  FiTool
+  FiTool, FiCamera, FiEdit2
 } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useNotif } from '../context/NotifContext';
 import { useSocket } from '../context/SocketContext';
 import NotificationBell from '../components/NotificationBell';
-import { SkeletonCard, SkeletonRow, SkeletonTable, SkeletonGrid } from '../components/LoadingSkeleton';
+import { SkeletonCard, SkeletonTable, SkeletonGrid } from '../components/LoadingSkeleton';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -29,7 +29,7 @@ const RevenueIcon = ({ className }) => (
 );
 
 const AdminDashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const { addNotification } = useNotif();
   const { socket } = useSocket();
   const navigate = useNavigate();
@@ -47,6 +47,19 @@ const AdminDashboard = () => {
   const [artisanViewMode, setArtisanViewMode] = useState('grid');
   const [buyerViewMode, setBuyerViewMode] = useState('grid');
 
+  // Profile edit states
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileData, setProfileData] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    location: user?.location || '',
+    bio: user?.bio || '',
+  });
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const avatarInputRef = useRef(null);
+
   // Artisan detail
   const [selectedArtisan, setSelectedArtisan] = useState(null);
   const [artisanDetailTab, setArtisanDetailTab] = useState('profile');
@@ -60,6 +73,63 @@ const AdminDashboard = () => {
 
   useEffect(() => { fetchAll(); }, []);
 
+  // Handle avatar upload
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be under 5MB');
+      return;
+    }
+    
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('avatar', file);
+      const res = await api.post('/users/avatar', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data.success) {
+        updateUser(res.data.user);
+        toast.success('Profile photo updated!');
+        // Refresh admin data
+        fetchAll();
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Failed to upload photo');
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  // Handle profile update
+  const handleUpdateProfile = async () => {
+    setSavingProfile(true);
+    try {
+      const res = await api.put('/users/profile', {
+        name: profileData.name,
+        phone: profileData.phone,
+        location: profileData.location,
+        bio: profileData.bio,
+      });
+      if (res.data.success) {
+        updateUser(res.data.user);
+        toast.success('Profile updated successfully!');
+        setShowProfileModal(false);
+        fetchAll();
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to update profile');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   // Listen for new user registrations
   useEffect(() => {
     if (!socket) return;
@@ -71,9 +141,9 @@ const AdminDashboard = () => {
         icon: '👤',
       });
       toast.custom((t) => (
-        <div className={`bg-white border-l-4 border-amber-600 rounded-xl shadow-xl p-4 max-w-sm w-full cursor-pointer ${t.visible ? 'opacity-100' : 'opacity-0'}`} onClick={() => toast.dismiss(t.id)}>
+        <div className={`bg-white border-l-4 border-[#723d46] rounded-xl shadow-xl p-4 max-w-sm w-full cursor-pointer ${t.visible ? 'opacity-100' : 'opacity-0'}`} onClick={() => toast.dismiss(t.id)}>
           <p className="font-bold text-gray-900 text-sm">👤 New Registration!</p>
-          <p className="text-xs text-gray-600 mt-1">{data.name} registered as <span className="font-semibold capitalize text-indigo-700">{data.role}</span></p>
+          <p className="text-xs text-gray-600 mt-1">{data.name} registered as <span className="font-semibold capitalize text-[#723d46]">{data.role}</span></p>
         </div>
       ), { duration: 6000, position: 'top-right' });
       fetchAll();
@@ -207,7 +277,7 @@ const AdminDashboard = () => {
 
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-800', confirmed: 'bg-blue-100 text-blue-800',
-    in_production: 'bg-purple-100 text-purple-800', shipped: 'bg-orange-100 text-orange-800',
+    in_production: 'bg-purple-100 text-purple-800',
     delivered: 'bg-green-100 text-green-800', cancelled: 'bg-red-100 text-red-800',
     processing: 'bg-blue-100 text-blue-800', 'order ready': 'bg-indigo-100 text-indigo-800',
   };
@@ -223,10 +293,124 @@ const AdminDashboard = () => {
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-4 border-amber-600 border-t-transparent mx-auto mb-4" />
+        <div className="animate-spin rounded-full h-16 w-16 border-4 border-[#723d46] border-t-transparent mx-auto mb-4" />
         <p className="text-gray-500">Loading admin panel...</p>
       </div>
     </div>
+  );
+
+  // ─── Profile Edit Modal ──────────────────────────────────────────────────────
+  const ProfileEditModal = () => (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
+      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" 
+      onClick={() => setShowProfileModal(false)}>
+      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} 
+        className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b flex justify-between items-center sticky top-0 bg-white rounded-t-2xl">
+          <h2 className="text-xl font-bold text-gray-900">Edit Profile</h2>
+          <button onClick={() => setShowProfileModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
+            <FiX className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-5 space-y-5">
+          {/* Avatar Upload */}
+          <div className="flex flex-col items-center">
+            <div className="relative">
+              {user?.avatar?.url ? (
+                <img src={user.avatar.url} alt={user.name} className="w-24 h-24 rounded-full object-cover border-4 border-[#723d46]" />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#723d46] to-[#5a2f36] flex items-center justify-center text-3xl font-bold text-white">
+                  {user?.name?.[0]?.toUpperCase()}
+                </div>
+              )}
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="absolute -bottom-2 -right-2 p-2 bg-[#723d46] text-white rounded-full shadow-lg hover:bg-[#5a2f36] transition"
+              >
+                {uploadingAvatar ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <FiCamera size={14} />
+                )}
+              </button>
+              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+            </div>
+            <p className="text-xs text-gray-500 mt-2">Click camera icon to change photo</p>
+          </div>
+
+          {/* Form Fields */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <input
+              type="text"
+              value={profileData.name}
+              onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:border-[#723d46] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={profileData.email}
+              disabled
+              className="w-full px-4 py-2 border border-gray-200 rounded-xl bg-gray-50 text-gray-500"
+            />
+            <p className="text-xs text-gray-400 mt-1">Email cannot be changed</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <input
+              type="tel"
+              value={profileData.phone}
+              onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:border-[#723d46] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+            <input
+              type="text"
+              value={profileData.location}
+              onChange={(e) => setProfileData({ ...profileData, location: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:border-[#723d46] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
+            <textarea
+              value={profileData.bio}
+              onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:border-[#723d46] focus:outline-none resize-none"
+              placeholder="Tell something about yourself..."
+            />
+          </div>
+
+          <div className="flex gap-3 pt-3">
+            <button
+              onClick={() => setShowProfileModal(false)}
+              className="flex-1 py-2.5 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleUpdateProfile}
+              disabled={savingProfile}
+              className="flex-1 py-2.5 bg-[#723d46] text-white rounded-xl font-medium hover:bg-[#5a2f36] transition disabled:opacity-50"
+            >
+              {savingProfile ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 
   // ─── Artisan Detail View ──────────────────────────────────────────────────
@@ -250,25 +434,25 @@ const AdminDashboard = () => {
 
     return (
       <div className="min-h-screen bg-white flex">
-        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
-          <div className="p-4 flex items-center justify-between border-b border-amber-800">
+        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-[#7d4f50] to-[#6b4344] text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+          <div className="p-4 flex items-center justify-between border-b border-[#6b4344]">
             {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-amber-800 rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-[#6b4344] rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
           </div>
           {sidebarOpen && (
-            <div className="p-4 border-b border-amber-800">
-              <button onClick={() => { setSelectedArtisan(null); setArtisanStats(null); }} className="flex items-center space-x-2 text-amber-200 hover:text-white text-sm mb-3">
+            <div className="p-4 border-b border-[#6b4344]">
+              <button onClick={() => { setSelectedArtisan(null); setArtisanStats(null); }} className="flex items-center space-x-2 text-[#d4a574] hover:text-white text-sm mb-3">
                 <FiArrowLeft className="h-4 w-4" /><span>Back to Artisans</span>
               </button>
-              <p className="text-xs text-amber-400 uppercase tracking-wider mb-1">Artisan</p>
+              <p className="text-xs text-[#d4a574] uppercase tracking-wider mb-1">Artisan</p>
               <p className="font-semibold text-white text-sm">{selectedArtisan.name}</p>
-              <p className="text-xs text-amber-300">{selectedArtisan.artisanProfile?.businessName}</p>
+              <p className="text-xs text-[#d4a574]">{selectedArtisan.artisanProfile?.businessName}</p>
             </div>
           )}
           <nav className="p-4 space-y-1">
             {artDetailNavItems.map(item => (
               <button key={item.id} onClick={() => setArtisanDetailTab(item.id)}
-                className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-0'} py-3 rounded-xl text-sm font-medium transition-all ${artisanDetailTab === item.id ? 'bg-white/20 text-white' : 'text-amber-200 hover:bg-white/10 hover:text-white'}`}>
+                className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-0'} py-3 rounded-xl text-sm font-medium transition-all ${artisanDetailTab === item.id ? 'bg-white/20 text-white' : 'text-[#d4a574] hover:bg-white/10 hover:text-white'}`}>
                 <item.icon className="h-4 w-4 flex-shrink-0" />
                 {sidebarOpen && <span>{item.label}</span>}
               </button>
@@ -279,7 +463,7 @@ const AdminDashboard = () => {
         <main className={`${sidebarOpen ? 'ml-64' : 'ml-20'} flex-1 p-6 pt-8 transition-all duration-300`}>
           {loadingArtisanStats ? (
             <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-amber-600 border-t-transparent" />
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#723d46] border-t-transparent" />
             </div>
           ) : (
             <>
@@ -288,7 +472,7 @@ const AdminDashboard = () => {
                   <h1 className="text-2xl font-bold text-gray-900 mb-6">Artisan Profile</h1>
                   <div className="bg-white rounded-2xl shadow-sm p-6 max-w-2xl">
                     <div className="flex items-center space-x-4 mb-6">
-                      <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center text-3xl font-bold text-amber-600">{selectedArtisan.name?.[0]}</div>
+                      <div className="w-20 h-20 rounded-full bg-[#f5e6e8] flex items-center justify-center text-3xl font-bold text-[#723d46]">{selectedArtisan.name?.[0]}</div>
                       <div>
                         <h2 className="text-xl font-bold text-gray-900">{selectedArtisan.name}</h2>
                         <p className="text-gray-500">{selectedArtisan.email}</p>
@@ -510,24 +694,24 @@ const AdminDashboard = () => {
 
     return (
       <div className="min-h-screen bg-white flex">
-        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
-          <div className="p-4 flex items-center justify-between border-b border-amber-800">
+        <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-[#7d4f50] to-[#6b4344] text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+          <div className="p-4 flex items-center justify-between border-b border-[#6b4344]">
             {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-amber-800 rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-[#6b4344] rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
           </div>
           {sidebarOpen && (
-            <div className="p-4 border-b border-amber-800">
-              <button onClick={() => setSelectedBuyer(null)} className="flex items-center space-x-2 text-amber-200 hover:text-white text-sm mb-3">
+            <div className="p-4 border-b border-[#6b4344]">
+              <button onClick={() => setSelectedBuyer(null)} className="flex items-center space-x-2 text-[#d4a574] hover:text-white text-sm mb-3">
                 <FiArrowLeft className="h-4 w-4" /><span>Back to Buyers</span>
               </button>
-              <p className="text-xs text-amber-400 uppercase tracking-wider mb-1">Buyer</p>
+              <p className="text-xs text-[#d4a574] uppercase tracking-wider mb-1">Buyer</p>
               <p className="font-semibold text-white text-sm">{selectedBuyer.name}</p>
             </div>
           )}
           <nav className="p-4 space-y-1">
             {navItems.map(item => (
               <button key={item.id} onClick={() => { setSelectedBuyer(null); setActiveTab(item.id); }}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-amber-200 hover:bg-white/10 hover:text-white">
+                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-[#d4a574] hover:bg-white/10 hover:text-white">
                 <item.icon className="h-4 w-4 flex-shrink-0" />
                 {sidebarOpen && <span>{item.label}</span>}
               </button>
@@ -541,7 +725,7 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="bg-white rounded-2xl shadow-sm p-6">
                 <div className="text-center mb-4">
-                  <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-2xl font-bold text-amber-700 mx-auto mb-3">{selectedBuyer.name?.[0]}</div>
+                  <div className="w-16 h-16 rounded-full bg-[#f5e6e8] flex items-center justify-center text-2xl font-bold text-[#723d46] mx-auto mb-3">{selectedBuyer.name?.[0]}</div>
                   <h2 className="font-bold text-gray-900">{selectedBuyer.name}</h2>
                   <p className="text-sm text-gray-500">{selectedBuyer.email}</p>
                   <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-xs font-medium ${selectedBuyer.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{selectedBuyer.isSuspended ? 'Suspended' : 'Active'}</span>
@@ -553,9 +737,9 @@ const AdminDashboard = () => {
                   </div>
                 ))}
                 {selectedBuyer.buyerProfile?.shippingAddresses?.[0] && (
-                  <div className="mt-4 p-3 bg-amber-50 rounded-xl">
-                    <p className="text-xs font-medium text-amber-700 mb-1">Default Address</p>
-                    <p className="text-sm text-amber-900">{selectedBuyer.buyerProfile.shippingAddresses[0].address}, {selectedBuyer.buyerProfile.shippingAddresses[0].city}</p>
+                  <div className="mt-4 p-3 bg-[#f5e6e8] rounded-xl">
+                    <p className="text-xs font-medium text-[#723d46] mb-1">Default Address</p>
+                    <p className="text-sm text-gray-700">{selectedBuyer.buyerProfile.shippingAddresses[0].address}, {selectedBuyer.buyerProfile.shippingAddresses[0].city}</p>
                   </div>
                 )}
                 <div className="flex space-x-2 mt-4">
@@ -596,31 +780,62 @@ const AdminDashboard = () => {
   // ─── Main Admin Dashboard ─────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-white flex">
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-stone-800 to-amber-900 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
-        <div className="p-4 flex items-center justify-between border-b border-amber-800">
+      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} min-h-screen bg-gradient-to-b from-[#7d4f50] to-[#6b4344] text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}>
+        <div className="p-4 flex items-center justify-between border-b border-[#6b4344]">
           {sidebarOpen && <h1 className="text-xl font-bold">⚙️ Admin</h1>}
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-amber-800 rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-[#6b4344] rounded-lg ml-auto"><FiMenu className="h-5 w-5" /></button>
         </div>
         {sidebarOpen && (
-          <div className="p-4 border-b border-amber-800">
+          <div className="p-4 border-b border-[#6b4344]">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-amber-700 flex items-center justify-center font-bold">{user?.name?.[0] || 'A'}</div>
-              <div><p className="font-medium text-sm">{user?.name}</p><p className="text-xs text-amber-300">Administrator</p></div>
+              <div className="relative group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
+                {user?.avatar?.url ? (
+                  <img src={user.avatar.url} alt={user?.name} className="w-10 h-10 rounded-full object-cover border-2 border-[#d4a574]" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[#6b4344] flex items-center justify-center font-bold text-white text-sm">
+                    {user?.name?.[0] || 'A'}
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                  <FiCamera className="h-4 w-4 text-white" />
+                </div>
+              </div>
+              <div>
+                <p className="font-medium text-sm">{user?.name}</p>
+                <p className="text-xs text-[#d4a574]">Administrator</p>
+              </div>
+              <button 
+                onClick={() => {
+                  setProfileData({
+                    name: user?.name || '',
+                    email: user?.email || '',
+                    phone: user?.phone || '',
+                    location: user?.location || '',
+                    bio: user?.bio || '',
+                  });
+                  setShowProfileModal(true);
+                }}
+                className="ml-auto p-1.5 hover:bg-[#6b4344] rounded-lg transition"
+                title="Edit Profile"
+              >
+                <FiEdit2 className="h-3.5 w-3.5 text-[#d4a574]" />
+              </button>
             </div>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
           </div>
         )}
         <nav className="p-4 space-y-1">
           {navItems.map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-0'} py-3 rounded-xl text-sm font-medium transition-all ${activeTab === item.id ? 'bg-white/20 text-white' : 'text-amber-200 hover:bg-white/10 hover:text-white'}`}>
+              className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-0'} py-3 rounded-xl text-sm font-medium transition-all ${activeTab === item.id ? 'bg-white/20 text-white' : 'text-[#d4a574] hover:bg-white/10 hover:text-white'}`}>
               <item.icon className="h-4 w-4 flex-shrink-0" />
               {sidebarOpen && <span>{item.label}</span>}
             </button>
           ))}
-          <button onClick={() => window.open('/', '_blank')} className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-0'} py-3 rounded-xl text-sm font-medium text-amber-200 hover:bg-white/10 hover:text-white`}>
+          <button onClick={() => window.open('/', '_blank')} className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-0'} py-3 rounded-xl text-sm font-medium text-[#d4a574] hover:bg-white/10 hover:text-white`}>
             <FiHome className="h-4 w-4 flex-shrink-0" />{sidebarOpen && <span>Visit Site</span>}
           </button>
-          <div className="border-t border-amber-800 pt-2 mt-4">
+          <div className="border-t border-[#6b4344] pt-2 mt-4">
             <button onClick={() => { logout(); navigate('/login'); }} className={`w-full flex items-center ${sidebarOpen ? 'space-x-3 px-4' : 'justify-center px-0'} py-3 rounded-xl text-sm font-medium text-red-300 hover:bg-red-900/30`}>
               <FiLogOut className="h-4 w-4 flex-shrink-0" />{sidebarOpen && <span>Logout</span>}
             </button>
@@ -633,7 +848,7 @@ const AdminDashboard = () => {
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-10 shadow-sm">
           <h2 className="text-gray-700 font-semibold capitalize">{activeTab === 'dashboard' ? 'Admin Dashboard' : activeTab}</h2>
           <div className="flex items-center space-x-3">
-            <button onClick={() => navigate('/')} className="flex items-center space-x-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-colors font-medium text-sm">
+            <button onClick={() => navigate('/')} className="flex items-center space-x-2 px-4 py-2 bg-[#f5e6e8] text-[#723d46] rounded-xl hover:bg-[#e8d4d8] transition-colors font-medium text-sm">
               <FiHome className="h-4 w-4" /><span>Home</span>
             </button>
             <NotificationBell />
@@ -700,13 +915,13 @@ const AdminDashboard = () => {
               <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">Buyers Management</h1>
                 <div className="flex space-x-2">
-                  <button onClick={() => setBuyerViewMode('grid')} className={`p-2 rounded-lg ${buyerViewMode === 'grid' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiGrid /></button>
-                  <button onClick={() => setBuyerViewMode('list')} className={`p-2 rounded-lg ${buyerViewMode === 'list' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiList /></button>
+                  <button onClick={() => setBuyerViewMode('grid')} className={`p-2 rounded-lg ${buyerViewMode === 'grid' ? 'bg-[#f5e6e8] text-[#723d46]' : 'bg-white text-gray-400'}`}><FiGrid /></button>
+                  <button onClick={() => setBuyerViewMode('list')} className={`p-2 rounded-lg ${buyerViewMode === 'list' ? 'bg-[#f5e6e8] text-[#723d46]' : 'bg-white text-gray-400'}`}><FiList /></button>
                 </div>
               </div>
               <div className="mb-4 relative max-w-md">
                 <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search buyers..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm bg-white" />
+                <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search buyers..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#723d46] outline-none text-sm bg-white" />
               </div>
               {loading ? (
                 <SkeletonGrid count={6} color="blue" />
@@ -714,14 +929,14 @@ const AdminDashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {users.filter(u => u.role === 'buyer' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
                     <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => setSelectedBuyer(u)}
-                      className="bg-[#F5EBE0] rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-[#D5C4A1]/30 hover:border-amber-200">
+                      className="bg-[#F5EBE0] rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-[#D5C4A1]/30 hover:border-[#723d46]">
                       <div className="flex items-center space-x-3 mb-3">
-                        <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-700">{u.name?.[0]}</div>
+                        <div className="w-12 h-12 rounded-full bg-[#f5e6e8] flex items-center justify-center text-xl font-bold text-[#723d46]">{u.name?.[0]}</div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 truncate">{u.name}</p>
                           <p className="text-xs text-gray-500 truncate">{u.email}</p>
                         </div>
-                        <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                        <FiEye className="h-4 w-4 text-[#723d46] flex-shrink-0" />
                       </div>
                       <div className="flex items-center justify-between">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
@@ -740,13 +955,13 @@ const AdminDashboard = () => {
               <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">Artisans Management</h1>
                 <div className="flex space-x-2">
-                  <button onClick={() => setArtisanViewMode('grid')} className={`p-2 rounded-lg ${artisanViewMode === 'grid' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiGrid /></button>
-                  <button onClick={() => setArtisanViewMode('list')} className={`p-2 rounded-lg ${artisanViewMode === 'list' ? 'bg-amber-100 text-amber-700' : 'bg-white text-gray-400'}`}><FiList /></button>
+                  <button onClick={() => setArtisanViewMode('grid')} className={`p-2 rounded-lg ${artisanViewMode === 'grid' ? 'bg-[#f5e6e8] text-[#723d46]' : 'bg-white text-gray-400'}`}><FiGrid /></button>
+                  <button onClick={() => setArtisanViewMode('list')} className={`p-2 rounded-lg ${artisanViewMode === 'list' ? 'bg-[#f5e6e8] text-[#723d46]' : 'bg-white text-gray-400'}`}><FiList /></button>
                 </div>
               </div>
               <div className="mb-4 relative max-w-md">
                 <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search artisans..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm bg-white" />
+                <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search artisans..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#723d46] outline-none text-sm bg-white" />
               </div>
               {loading ? (
                 <SkeletonGrid count={6} color="purple" />
@@ -754,14 +969,14 @@ const AdminDashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {users.filter(u => u.role === 'artisan' && (!searchTerm || u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))).map(u => (
                     <motion.button key={u._id} whileHover={{ y: -2, scale: 1.01 }} onClick={() => openArtisanDetail(u)}
-                      className="bg-[#F5EBE0] rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-[#D5C4A1]/30 hover:border-amber-100">
+                      className="bg-[#F5EBE0] rounded-2xl shadow-sm p-5 text-left hover:shadow-md transition-all cursor-pointer border border-[#D5C4A1]/30 hover:border-[#723d46]">
                       <div className="flex items-center space-x-3 mb-3">
-                        <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-xl font-bold text-amber-600">{u.name?.[0]}</div>
+                        <div className="w-12 h-12 rounded-full bg-[#f5e6e8] flex items-center justify-center text-xl font-bold text-[#723d46]">{u.name?.[0]}</div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 truncate">{u.name}</p>
                           <p className="text-xs text-gray-500 truncate">{u.artisanProfile?.businessName || u.email}</p>
                         </div>
-                        <FiEye className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                        <FiEye className="h-4 w-4 text-[#723d46] flex-shrink-0" />
                       </div>
                       <div className="flex flex-wrap gap-1 mb-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isSuspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{u.isSuspended ? 'Suspended' : 'Active'}</span>
@@ -792,7 +1007,7 @@ const AdminDashboard = () => {
               <h1 className="text-2xl font-bold text-gray-900 mb-6">Products Management</h1>
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="p-4 border-b">
-                  <div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search products..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm" /></div>
+                  <div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search products..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#723d46] outline-none text-sm" /></div>
                 </div>
                 {loading ? (
                   <div className="p-6">
@@ -835,7 +1050,7 @@ const AdminDashboard = () => {
               <h1 className="text-2xl font-bold text-gray-900 mb-6">Global Custom Orders</h1>
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="p-4 border-b">
-                  <div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search requests..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-amber-500 outline-none text-sm" /></div>
+                  <div className="relative max-w-md"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search requests..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:border-[#723d46] outline-none text-sm" /></div>
                 </div>
                 {loading ? (
                   <div className="p-6">
@@ -898,6 +1113,7 @@ const AdminDashboard = () => {
         {selectedModal && (
           <OrderModal order={selectedModal.data} onClose={() => setSelectedModal(null)} statusColors={statusColors} onUpdateStatus={handleUpdateOrderStatus} onRefund={handleRefund} />
         )}
+        {showProfileModal && <ProfileEditModal />}
       </AnimatePresence>
     </div>
   );
@@ -984,7 +1200,7 @@ const OrderModal = ({ order, onClose, statusColors, onUpdateStatus, onRefund }) 
         </div>
         <div>
           <p className="text-xs font-medium text-gray-600 mb-2 uppercase">Update Status</p>
-          <select onChange={e => { onUpdateStatus(order._id, e.target.value); onClose(); }} defaultValue="" className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-amber-500 outline-none bg-white text-sm">
+          <select onChange={e => { onUpdateStatus(order._id, e.target.value); onClose(); }} defaultValue="" className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:border-[#723d46] outline-none bg-white text-sm">
             <option value="" disabled>Select new status...</option>
             {['pending', 'confirmed', 'processing', 'order ready', 'shipped', 'delivered', 'cancelled'].map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>

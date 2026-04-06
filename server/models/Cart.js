@@ -51,7 +51,7 @@ const calculateTaxes = (subtotal, items) => {
   };
 };
 
-cartSchema.pre('save', function (next) {
+cartSchema.pre('save', async function () {
   this.subtotal = this.items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
 
   const taxes = calculateTaxes(this.subtotal, this.items);
@@ -61,7 +61,6 @@ cartSchema.pre('save', function (next) {
 
   this.total = this.subtotal + this.vat + this.nbt + this.cess;
   this.updatedAt = new Date();
-  next();
 });
 
 

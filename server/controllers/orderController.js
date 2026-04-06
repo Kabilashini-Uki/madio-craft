@@ -160,7 +160,7 @@ export const getMyOrders = async (req, res) => {
       .lean();
     res.json({ success: true, orders });
   } catch (error) {
-    console.error('❌ Get my orders error:', error.message);
+    console.error('Get my orders error:', error.message);
     res.status(500).json({ success: false, message: 'Failed to load orders', error: error.message });
   }
 };
@@ -197,7 +197,7 @@ export const getArtisanOrders = async (req, res) => {
       .lean();
     res.json({ success: true, orders });
   } catch (error) {
-    console.error('❌ Get artisan orders error:', error.message);
+    console.error('Get artisan orders error:', error.message);
     res.status(500).json({ success: false, message: 'Failed to load orders', error: error.message });
   }
 };
@@ -237,7 +237,7 @@ export const updateOrderStatus = async (req, res) => {
           user: order.buyer,
           userModel: 'User',
           type: 'order-status',
-          title: status === 'delivered' ? '🎉 Order Delivered!' : 'Order Status Updated',
+          title: status === 'delivered' ? ' Order Delivered!' : 'Order Status Updated',
           body: status === 'delivered'
             ? `Your order #${order.orderId} has been delivered! Please confirm and leave a review.`
             : `Order #${order.orderId} is now "${status}"`,
@@ -265,12 +265,12 @@ export const cancelOrder = async (req, res) => {
     if (String(order.buyer._id) !== String(req.user._id))
       return res.status(403).json({ message: 'Not authorized' });
 
-    const nonCancellable = ['order ready', 'shipped', 'delivered', 'cancelled'];
+    const nonCancellable = ['order ready', 'delivered', 'cancelled'];
     if (nonCancellable.includes(order.orderStatus))
       return res.status(400).json({
         message: order.orderStatus === 'cancelled'
           ? 'Order already cancelled'
-          : 'Cannot cancel this order — the artisan has already marked it as ready or shipped.',
+          : 'Cannot cancel this order — the artisan has already marked it as ready or delivered.',
       });
 
     order.orderStatus = 'cancelled';

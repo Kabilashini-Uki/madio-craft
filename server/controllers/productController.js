@@ -13,23 +13,13 @@ const coerceProductFields = (body) => {
   // Boolean — FormData sends 'true' / 'false' as strings
   if (d.isCustomizable !== undefined)
     d.isCustomizable = d.isCustomizable === true || d.isCustomizable === 'true';
-  // Arrays — frontend sends comma-separated strings or JSON arrays
-  ['materials', 'tags'].forEach(key => {
-    if (d[key] !== undefined) {
-      if (Array.isArray(d[key])) {
-        d[key] = d[key].flatMap(v => v.split(',').map(s => s.trim()).filter(Boolean));
-      } else if (typeof d[key] === 'string') {
-        try { d[key] = JSON.parse(d[key]); }
-        catch (_) { d[key] = d[key].split(',').map(s => s.trim()).filter(Boolean); }
-      }
-    }
-  });
   return d;
 };
 
 export const createProduct = async (req, res) => {
   try {
-    const productData = { ...coerceProductFields(req.body), artisan: req.user.id };
+    const userId = req.user._id || req.user.id;
+    const productData = { ...coerceProductFields(req.body), artisan: userId };
 
     productData.images = [];
     if (req.body.images) {
@@ -78,7 +68,7 @@ export const createProduct = async (req, res) => {
     const product = await Product.create(productData);
 
     try {
-      const artisan = await Artisan.findOne({ user: req.user.id });
+      const artisan = await Artisan.findOne({ user: userId });
       if (artisan) {
         artisan.stats = artisan.stats || {};
         artisan.stats.totalProducts = (artisan.stats.totalProducts || 0) + 1;
@@ -119,13 +109,26 @@ export const getProducts = async (req, res) => {
       .sort(sort)
       .skip(skip)
       .limit(Number(limit))
-      .lean(); // Use lean for better performance
+      .lean();
+
+    // Fetch artisan profiles to get acceptCustomOrders flag
+    const productsWithCustomStatus = await Promise.all(
+      products.map(async (product) => {
+        if (product.artisan?._id) {
+          const artisanProfile = await Artisan.findOne({ user: product.artisan._id }, 'acceptCustomOrders');
+          if (artisanProfile) {
+            product.artisan.acceptCustomOrders = artisanProfile.acceptCustomOrders;
+          }
+        }
+        return product;
+      })
+    );
 
     const total = await Product.countDocuments(filter);
 
     res.json({
       success: true,
-      products,
+      products: productsWithCustomStatus,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -156,6 +159,17 @@ export const getProduct = async (req, res) => {
       });
     }
 
+    // Fetch artisan profile to get acceptCustomOrders flag
+    if (product.artisan?._id) {
+      const artisanProfile = await Artisan.findOne({ user: product.artisan._id }, 'acceptCustomOrders');
+      if (artisanProfile) {
+        product.artisan = {
+          ...product.artisan.toObject?.() || product.artisan,
+          acceptCustomOrders: artisanProfile.acceptCustomOrders
+        };
+      }
+    }
+
     res.json({ success: true, product });
   } catch (error) {
     console.error('Get product error:', error);
@@ -175,9 +189,10 @@ export const getProduct = async (req, res) => {
 
 export const updateProduct = async (req, res) => {
   try {
+    const userId = req.user._id || req.user.id;
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
-    if (product.artisan.toString() !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+    if (product.artisan.toString() !== userId.toString()) return res.status(403).json({ message: 'Not authorized' });
 
     let updatedImages = [];
     if (req.body.images) {
@@ -239,9 +254,10 @@ export const updateProduct = async (req, res) => {
 
 export const deleteProduct = async (req, res) => {
   try {
+    const userId = req.user._id || req.user.id;
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
-    if (product.artisan.toString() !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ message: 'Not authorized' });
+    if (product.artisan.toString() !== userId.toString() && req.user.role !== 'admin') return res.status(403).json({ message: 'Not authorized' });
 
     product.isActive = false;
     await product.save();
@@ -297,7 +313,7 @@ export const sendCustomizationRequest = async (req, res) => {
       console.warn('Product not found:', req.params.id);
       return res.status(404).json({ message: 'Product not found' });
     }
-    console.log('Product artisan:', product.artisan);
+    console.log('Product artisan:', { id: product.artisan?._id, name: product.artisan?.name });
     if (!product.artisan?._id) {
       console.warn('No artisan assigned to product:', product._id);
       return res.status(400).json({ message: 'This product has no artisan assigned' });
@@ -345,7 +361,7 @@ export const sendCustomizationRequest = async (req, res) => {
       };
 
       await Notification.create({
-        user: product.artisan.user?._id || product.artisan.user,
+        user: product.artisan._id,
         userModel: 'User',
         type: 'customization-request',
         title: 'Customisation Request',
@@ -355,7 +371,7 @@ export const sendCustomizationRequest = async (req, res) => {
 
       const io = req.app.get('io');
       if (io) {
-        io.to(`user-${product.artisan.user?._id || product.artisan.user}`).emit('customization-request', socketPayload);
+        io.to(`user-${product.artisan._id}`).emit('customization-request', socketPayload);
       }
     } catch (e) {
       console.warn('Notification/Socket failed:', e.message);
@@ -428,7 +444,7 @@ export const respondToCustomization = async (req, res) => {
     try {
       // 5. Store the response as a notification in the buyer's bell.
       await Notification.create({
-        user: buyerId,
+        user: custReq.sender,
         userModel: 'User',
         type: 'customization-response',
         title: available ? 'Customisation Accepted!' : 'Customisation Unavailable',
@@ -540,5 +556,25 @@ export const getCategories = async (req, res) => {
   } catch (error) {
     console.error('Failed to fetch categories:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ── POST /api/products/upload-images ──────────────────────────────
+// Temporary image upload endpoint for frontend
+export const uploadImages = async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: 'No images provided' });
+    }
+
+    const images = req.files.map(f => ({
+      ...fileToImageObj(req, f, 'products'),
+      isPrimary: false,
+    }));
+
+    res.json({ success: true, images });
+  } catch (error) {
+    console.error('Image upload error:', error);
+    res.status(500).json({ success: false, message: 'Failed to upload images' });
   }
 };

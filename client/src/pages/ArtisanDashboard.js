@@ -98,6 +98,7 @@ const ArtisanDashboard = () => {
     artisanProfile: {
       businessName: user?.artisanProfile?.businessName || "",
       description: user?.artisanProfile?.description || "",
+      tagline: user?.artisanProfile?.tagline || "",
       specialties: user?.artisanProfile?.specialties?.join(", ") || "",
       yearsOfExperience: user?.artisanProfile?.yearsOfExperience || 0,
       socialLinks: {
@@ -377,7 +378,7 @@ const ArtisanDashboard = () => {
   useEffect(() => {
     if (!socket) return;
     const handleNewOrder = (data) => {
-      toast.success(`📦 New Order Received: #${data.orderId}`, {
+      toast.success(` New Order Received: #${data.orderId}`, {
         duration: 6000,
       });
       fetchAllData();
@@ -534,19 +535,27 @@ const ArtisanDashboard = () => {
         location: profileData.location,
         phone: profileData.phone,
         artisanProfile: {
-          ...profileData.artisanProfile,
+          businessName: profileData.artisanProfile.businessName,
+          description: profileData.artisanProfile.description,
+          tagline: profileData.artisanProfile.tagline,
           specialties: profileData.artisanProfile.specialties
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean),
+          yearsOfExperience: Number(profileData.artisanProfile.yearsOfExperience) || 0,
+          socialLinks: profileData.artisanProfile.socialLinks,
         },
       };
+      console.log('Saving profile payload:', payload);
       const res = await api.put("/users/profile", payload);
+      console.log('Profile update response:', res.data);
       updateUser(res.data.user);
-      toast.success("Profile updated!");
+      toast.success("Profile updated successfully!");
       setProfileEditing(false);
     } catch (e) {
-      toast.error("Failed to update profile");
+      console.error('Profile update error:', e);
+      const errorMsg = e?.response?.data?.message || e?.message || 'Failed to update profile';
+      toast.error(errorMsg);
     } finally {
       setSavingProfile(false);
     }
@@ -559,7 +568,6 @@ const ArtisanDashboard = () => {
     confirmed: "bg-blue-100 text-blue-800",
     in_production: "bg-purple-100 text-purple-800",
     ready: "bg-indigo-100 text-indigo-800",
-    shipped: "bg-orange-100 text-orange-800",
     delivered: "bg-green-100 text-green-800",
     cancelled: "bg-red-100 text-red-800",
   };
@@ -580,9 +588,9 @@ const ArtisanDashboard = () => {
       <div className="flex">
         {/* Sidebar */}
         <aside
-          className={`${sidebarOpen ? "w-64" : "w-20"} min-h-screen bg-gradient-to-b from-amber-900 to-amber-800 text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}
+          className={`${sidebarOpen ? "w-64" : "w-20"} min-h-screen bg-gradient-to-b from-[#7d4f50] to-[#6b4344] text-white flex-shrink-0 fixed left-0 top-0 z-20 transition-all duration-300`}
         >
-          <div className="p-4 flex items-center justify-between border-b border-amber-800 h-16">
+          <div className="p-4 flex items-center justify-between border-b border-[#6b4344] h-16">
             {sidebarOpen && (
               <h1 className="text-lg font-bold text-amber-100">
                 Artisan Panel
@@ -693,7 +701,7 @@ const ArtisanDashboard = () => {
                 <div className="flex justify-between items-center mb-6">
                   <div>
                     <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                      Welcome back, {user?.name?.split(" ")[0]}! 🎨
+                      Welcome back, {user?.name?.split(" ")[0]}! 
                     </h1>
                     <p className="text-gray-500">Here's your shop overview for today.</p>
                   </div>
@@ -1094,9 +1102,8 @@ const ArtisanDashboard = () => {
                             order.orderStatus !== "delivered" && (
                               <>
                                 {[
-                                  { s: "processing", label: "⚙️ Processing" },
-                                  { s: "order ready", label: "🎁 Ready" },
-                                  { s: "shipped", label: "🚚 Shipped" },
+                                  { s: "processing", label: " Processing" },
+                                  { s: "order ready", label: "Ready" },
                                   { s: "delivered", label: "✓ Delivered" },
                                   { s: "cancelled", label: "✗ Cancel" },
                                 ]
@@ -1105,7 +1112,7 @@ const ArtisanDashboard = () => {
                                       "pending",
                                       "processing",
                                       "order ready",
-                                      "shipped",
+                                      
                                       "delivered",
                                     ];
                                     const curr = flow.indexOf(
@@ -1284,9 +1291,8 @@ const ArtisanDashboard = () => {
                               </p>
                               <div className="flex flex-wrap gap-2">
                                 {[
-                                  { s: "processing", label: "⚙️ Processing" },
-                                  { s: "order ready", label: "🎁 Ready" },
-                                  { s: "shipped", label: "🚚 Shipped" },
+                                  { s: "processing", label: " Processing" },
+                                  { s: "order ready", label: " Ready" },
                                   { s: "delivered", label: "✓ Delivered" },
                                   { s: "cancelled", label: "✗ Cancel" },
                                 ].map((action) => (
@@ -1740,10 +1746,405 @@ const ArtisanDashboard = () => {
               </motion.div>
             )}
 
-            {/* Profile Tab - truncated for brevity, but same as before */}
+            {/* Profile Tab */}
             {activeTab === "profile" && (
-              // Profile content here (same as original)
-              <div>Profile content</div>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <div className="max-w-4xl">
+                  {/* Header */}
+                  <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
+                    {!profileEditing && (
+                      <button
+                        onClick={() => setProfileEditing(true)}
+                        className="flex items-center space-x-2 px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition-colors"
+                      >
+                        <FiEdit className="h-4 w-4" />
+                        <span>Edit Profile</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Cover Image Section */}
+                  <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6 border border-gray-200">
+                    <div className="relative h-48 bg-gradient-to-r from-amber-700 to-amber-800">
+                      {user?.coverImage?.url && (
+                        <img
+                          src={user.coverImage.url}
+                          alt="Cover"
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      {profileEditing && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                          <button
+                            onClick={() => coverInputRef.current?.click()}
+                            disabled={uploadingCover}
+                            className="px-4 py-2 bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-100 disabled:opacity-50"
+                          >
+                            {uploadingCover ? "Uploading..." : "Change Cover"}
+                          </button>
+                          <input
+                            ref={coverInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleUploadCover}
+                            className="hidden"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Avatar Section */}
+                    <div className="px-6 pb-6">
+                      <div className="flex items-end space-x-4 -mt-16 mb-6 relative z-10">
+                        <div className="relative">
+                          {user?.avatar?.url ? (
+                            <img
+                              src={user.avatar.url}
+                              alt={user.name}
+                              className="w-32 h-32 rounded-2xl border-4 border-white object-cover shadow-lg"
+                            />
+                          ) : (
+                            <div className="w-32 h-32 rounded-2xl border-4 border-white bg-amber-200 flex items-center justify-center text-5xl font-bold text-amber-800 shadow-lg">
+                              {user?.name?.[0]?.toUpperCase()}
+                            </div>
+                          )}
+                          {profileEditing && (
+                            <button
+                              onClick={() => avatarInputRef.current?.click()}
+                              disabled={uploadingAvatar}
+                              className="absolute bottom-2 right-2 p-2 bg-white rounded-full shadow-lg hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              <FiCamera className="h-5 w-5 text-gray-900" />
+                            </button>
+                          )}
+                          <input
+                            ref={avatarInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleUploadAvatar}
+                            className="hidden"
+                          />
+                        </div>
+                        <div>
+                          <h2 className="text-2xl font-bold text-gray-900">{user?.name}</h2>
+                          <p className="text-amber-700 font-medium">{user?.artisanProfile?.businessName || "Artisan"}</p>
+                          {user?.artisanProfile?.tagline && (
+                            <p className="text-gray-600 text-sm mt-1 italic">"{user.artisanProfile.tagline}"</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Profile Info */}
+                      {!profileEditing ? (
+                        <div className="space-y-6">
+                          {/* Bio */}
+                          {user?.bio && (
+                            <div>
+                              <p className="text-sm font-medium text-gray-600 mb-2">About</p>
+                              <p className="text-gray-900">{user.bio}</p>
+                            </div>
+                          )}
+
+                          {/* Contact Info */}
+                          <div className="grid grid-cols-2 gap-6">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600 mb-1">Email</p>
+                              <p className="text-gray-900">{user?.email}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-600 mb-1">Phone</p>
+                              <p className="text-gray-900">{user?.phone || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-600 mb-1">Location</p>
+                              <p className="text-gray-900">{user?.location || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-600 mb-1">Verification</p>
+                              <p className="text-gray-900 flex items-center">
+                                {user?.isVerified ? (
+                                  <span className="flex items-center text-green-600">
+                                    <FiCheckCircle className="h-4 w-4 mr-1" />
+                                    Verified
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-500">Pending</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Artisan Profile */}
+                          <div className="border-t pt-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-4">Artisan Information</h3>
+                            <div className="space-y-4">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 mb-1">Business Name</p>
+                                <p className="text-gray-900">{user?.artisanProfile?.businessName || "Not provided"}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 mb-1">Description</p>
+                                <p className="text-gray-900">{user?.artisanProfile?.description || "Not provided"}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 mb-1">Years of Experience</p>
+                                <p className="text-gray-900">{user?.artisanProfile?.yearsOfExperience || 0} years</p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 mb-1">Specialties</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {user?.artisanProfile?.specialties?.length > 0 ? (
+                                    user.artisanProfile.specialties.map((spec, i) => (
+                                      <span key={i} className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm">
+                                        {spec}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <p className="text-gray-500">Not provided</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 mb-2">Social Links</p>
+                                <div className="space-y-2">
+                                  {user?.artisanProfile?.socialLinks?.instagram && (
+                                    <p className="text-gray-900">
+                                      <span className="font-medium">Instagram:</span> {user.artisanProfile.socialLinks.instagram}
+                                    </p>
+                                  )}
+                                  {user?.artisanProfile?.socialLinks?.facebook && (
+                                    <p className="text-gray-900">
+                                      <span className="font-medium">Facebook:</span> {user.artisanProfile.socialLinks.facebook}
+                                    </p>
+                                  )}
+                                  {user?.artisanProfile?.socialLinks?.website && (
+                                    <p className="text-gray-900">
+                                      <span className="font-medium">Website:</span> {user.artisanProfile.socialLinks.website}
+                                    </p>
+                                  )}
+                                  {!user?.artisanProfile?.socialLinks?.instagram && !user?.artisanProfile?.socialLinks?.facebook && !user?.artisanProfile?.socialLinks?.website && (
+                                    <p className="text-gray-500">Not provided</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Edit Mode */
+                        <div className="space-y-6">
+                          {/* Basic Info */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                            <input
+                              type="text"
+                              value={profileData.name}
+                              onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Bio</label>
+                            <textarea
+                              value={profileData.bio}
+                              onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
+                              rows="3"
+                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                              placeholder="Tell customers about yourself..."
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                              <input
+                                type="tel"
+                                value={profileData.phone}
+                                onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                              <input
+                                type="text"
+                                value={profileData.location}
+                                onChange={(e) => setProfileData({ ...profileData, location: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Artisan Profile */}
+                          <div className="border-t pt-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-4">Artisan Information</h3>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Business Name</label>
+                              <input
+                                type="text"
+                                value={profileData.artisanProfile.businessName}
+                                onChange={(e) => setProfileData({
+                                  ...profileData,
+                                  artisanProfile: { ...profileData.artisanProfile, businessName: e.target.value }
+                                })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                              />
+                            </div>
+
+                            <div className="mt-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Tagline (1-2 lines)</label>
+                              <input
+                                type="text"
+                                value={profileData.artisanProfile.tagline}
+                                onChange={(e) => setProfileData({
+                                  ...profileData,
+                                  artisanProfile: { ...profileData.artisanProfile, tagline: e.target.value }
+                                })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                placeholder="e.g., Master Potter with 10+ years experience"
+                              />
+                            </div>
+
+                            <div className="mt-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                              <textarea
+                                value={profileData.artisanProfile.description}
+                                onChange={(e) => setProfileData({
+                                  ...profileData,
+                                  artisanProfile: { ...profileData.artisanProfile, description: e.target.value }
+                                })}
+                                rows="3"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                placeholder="Describe your craft and experience..."
+                              />
+                            </div>
+
+                            <div className="mt-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Specialties (comma-separated)</label>
+                              <input
+                                type="text"
+                                value={profileData.artisanProfile.specialties}
+                                onChange={(e) => setProfileData({
+                                  ...profileData,
+                                  artisanProfile: { ...profileData.artisanProfile, specialties: e.target.value }
+                                })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                placeholder="e.g., Pottery, Ceramics, Handpainting"
+                              />
+                            </div>
+
+                            <div className="mt-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">Years of Experience</label>
+                              <input
+                                type="number"
+                                value={profileData.artisanProfile.yearsOfExperience}
+                                onChange={(e) => setProfileData({
+                                  ...profileData,
+                                  artisanProfile: { ...profileData.artisanProfile, yearsOfExperience: Number(e.target.value) }
+                                })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                              />
+                            </div>
+
+                            {/* Social Links */}
+                            <div className="mt-6 pt-6 border-t">
+                              <h4 className="font-medium text-gray-900 mb-4">Social Links</h4>
+                              <div className="space-y-3">
+                                <div className="flex items-center space-x-2">
+                                  <FiInstagram className="h-5 w-5 text-gray-600" />
+                                  <input
+                                    type="text"
+                                    placeholder="Instagram URL"
+                                    value={profileData.artisanProfile.socialLinks?.instagram || ""}
+                                    onChange={(e) => setProfileData({
+                                      ...profileData,
+                                      artisanProfile: {
+                                        ...profileData.artisanProfile,
+                                        socialLinks: { ...profileData.artisanProfile.socialLinks, instagram: e.target.value }
+                                      }
+                                    })}
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                  />
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <FiFacebook className="h-5 w-5 text-gray-600" />
+                                  <input
+                                    type="text"
+                                    placeholder="Facebook URL"
+                                    value={profileData.artisanProfile.socialLinks?.facebook || ""}
+                                    onChange={(e) => setProfileData({
+                                      ...profileData,
+                                      artisanProfile: {
+                                        ...profileData.artisanProfile,
+                                        socialLinks: { ...profileData.artisanProfile.socialLinks, facebook: e.target.value }
+                                      }
+                                    })}
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                  />
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <FiGlobe className="h-5 w-5 text-gray-600" />
+                                  <input
+                                    type="text"
+                                    placeholder="Website URL"
+                                    value={profileData.artisanProfile.socialLinks?.website || ""}
+                                    onChange={(e) => setProfileData({
+                                      ...profileData,
+                                      artisanProfile: {
+                                        ...profileData.artisanProfile,
+                                        socialLinks: { ...profileData.artisanProfile.socialLinks, website: e.target.value }
+                                      }
+                                    })}
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex space-x-3 pt-6 border-t">
+                            <button
+                              onClick={handleSaveProfile}
+                              disabled={savingProfile}
+                              className="flex-1 px-6 py-3 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                            >
+                              {savingProfile ? "Saving..." : "Save Changes"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setProfileEditing(false);
+                                setProfileData({
+                                  name: user?.name || "",
+                                  bio: user?.bio || "",
+                                  location: user?.location || "",
+                                  phone: user?.phone || "",
+                                  artisanProfile: {
+                                    businessName: user?.artisanProfile?.businessName || "",
+                                    description: user?.artisanProfile?.description || "",
+                                    specialties: user?.artisanProfile?.specialties?.join(", ") || "",
+                                    yearsOfExperience: user?.artisanProfile?.yearsOfExperience || 0,
+                                    socialLinks: user?.artisanProfile?.socialLinks || {},
+                                  },
+                                });
+                              }}
+                              className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
             )}
           </main>
         </div>
@@ -1766,10 +2167,283 @@ const ArtisanDashboard = () => {
   );
 };
 
-// Product Modal component (same as original, truncated)
+// Product Modal component
 const ProductModal = ({ product, onClose, onSave }) => {
-  // Product modal implementation (same as original)
-  return null;
+  const [formData, setFormData] = useState({
+    name: product?.name || "",
+    description: product?.description || "",
+    price: product?.price || "",
+    category: product?.category || "jewelry",
+    stock: product?.stock || 1,
+    isCustomizable: product?.isCustomizable || false,
+    images: product?.images || [],
+  });
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = React.useRef(null);
+
+  const handleImageUpload = async (e) => {
+    const files = e.target.files;
+    if (!files) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      for (let file of files) {
+        fd.append("images", file);
+      }
+      const res = await api.post("/products/upload-images", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (res.data.success) {
+        setFormData(prev => ({
+          ...prev,
+          images: [...prev.images, ...res.data.images]
+        }));
+        toast.success("Images uploaded!");
+      }
+    } catch (err) {
+      toast.error("Failed to upload images");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveImage = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      toast.error("Product name is required");
+      return;
+    }
+    if (!formData.description.trim()) {
+      toast.error("Product description is required");
+      return;
+    }
+    if (!formData.price || formData.price <= 0) {
+      toast.error("Valid price is required");
+      return;
+    }
+    if (formData.images.length === 0) {
+      toast.error("At least one image is required");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        ...formData,
+        images: formData.images.map(img => ({
+          url: img.url,
+          public_id: img.public_id || ""
+        }))
+      };
+
+      if (product?._id) {
+        await api.put(`/products/${product._id}`, payload);
+        toast.success("Product updated!");
+      } else {
+        await api.post("/products", payload);
+        toast.success("Product created!");
+      }
+      onSave();
+      onClose();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to save product");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+      >
+        <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {product ? "Edit Product" : "Add New Product"}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg"
+          >
+            <FiX className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Product Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Product Name *
+            </label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              placeholder="e.g., Handmade Ceramic Vase"
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Description *
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows="4"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              placeholder="Describe your product..."
+            />
+          </div>
+
+          {/* Price & Stock */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Price (Rs.) *
+              </label>
+              <input
+                type="number"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                placeholder="0"
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Stock *
+              </label>
+              <input
+                type="number"
+                value={formData.stock}
+                onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                placeholder="1"
+                min="1"
+              />
+            </div>
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Category *
+            </label>
+            <select
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            >
+              <option value="jewelry">Jewelry</option>
+              <option value="pottery">Pottery</option>
+              <option value="textiles">Textiles</option>
+              <option value="woodwork">Woodwork</option>
+              <option value="metalwork">Metalwork</option>
+              <option value="glass">Glass</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {/* Customizable */}
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="customizable"
+              checked={formData.isCustomizable}
+              onChange={(e) => setFormData({ ...formData, isCustomizable: e.target.checked })}
+              className="w-4 h-4 text-amber-600 rounded"
+            />
+            <label htmlFor="customizable" className="text-sm font-medium text-gray-700">
+              This product can be customized
+            </label>
+          </div>
+
+          {/* Images */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Product Images * (at least 1)
+            </label>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              {formData.images.map((img, idx) => (
+                <div key={idx} className="relative group">
+                  <img
+                    src={img.url}
+                    alt={`Product ${idx + 1}`}
+                    className="w-full h-24 object-cover rounded-lg"
+                  />
+                  <button
+                    onClick={() => handleRemoveImage(idx)}
+                    className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <FiX className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-amber-500 hover:text-amber-600 transition-colors disabled:opacity-50"
+            >
+              {uploading ? "Uploading..." : "Click to upload images"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-4 border-t">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium disabled:opacity-50 flex items-center justify-center space-x-2"
+            >
+              {saving ? (
+                <>
+                  <FiRefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>{product ? "Update" : "Create"} Product</span>
+              )}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
 };
 
 export default ArtisanDashboard;
